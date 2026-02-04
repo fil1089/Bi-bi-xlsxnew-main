@@ -1,7 +1,7 @@
 {
-  "name": "copy-of-copy-of-copy-of-xlsx-editor-lite-work2",
+  "name": "bi-bi-xlsx-editor-lite",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,9 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.94.0",
+    "@hello-pangea/dnd": "^18.0.1",
+    "@supabase/supabase-js": "^2.48.1",
     "react": "^19.2.0",
-    "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {

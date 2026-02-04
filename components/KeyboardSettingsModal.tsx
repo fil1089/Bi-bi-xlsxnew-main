@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 // Fix: Correctly import KeyboardButtonConfig type.
 import type { KeyboardButtonConfig } from './NumericKeyboard';
 // Fix: Import newly created DragHandleIcon.
