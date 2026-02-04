@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ClearIcon, ChevronLeftIcon, ChevronRightIcon, FilterIcon, PlusIcon } from './Icons';
+import { ClearIcon, ChevronLeftIcon, ChevronRightIcon, FilterIcon, PlusIcon, TrashIcon } from './Icons';
 import { FilterType } from '../types';
 
 interface SearchBarProps {
@@ -14,6 +14,7 @@ interface SearchBarProps {
     filter: FilterType;
     setFilter: (filter: FilterType) => void;
     onReset: () => void;
+    onDelete?: () => void;
     children?: React.ReactNode;
 }
 
@@ -27,6 +28,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
     filter,
     setFilter,
     onReset,
+    onDelete,
     children
 }) => {
     const [isFilterOpen, setFilterOpen] = useState(false);
@@ -99,6 +101,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 >
                     <PlusIcon style={{ width: '1.25rem', height: '1.25rem' }} />
                 </button>
+
+                {onDelete && (
+                    <button
+                        onClick={onDelete}
+                        className="btn p-0 d-flex align-items-center justify-content-center transition-colors border border-secondary text-danger bg-gray-900 flex-shrink-0 hover-bg-red-900"
+                        style={{ height: '2.5rem', width: '2.5rem' }}
+                        title="Удалить файл"
+                        aria-label="Удалить текущий файл"
+                    >
+                        <TrashIcon style={{ width: '1.25rem', height: '1.25rem' }} />
+                    </button>
+                )}
 
                 <div className="position-relative flex-grow-1">
                     <input

@@ -545,6 +545,32 @@ const App: React.FC = () => {
         setSelectedCell(null);
     };
 
+    const handleDeleteFile = async () => {
+        if (!user || !fileName) return;
+
+        const confirmed = window.confirm(`Вы уверены, что хотите удалить файл "${fileName}" из облака? Это действие нельзя отменить.`);
+        if (!confirmed) return;
+
+        try {
+            setLoading(true);
+            const { error: deleteError } = await supabase
+                .from('files')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('file_name', fileName);
+
+            if (deleteError) throw deleteError;
+
+            console.log('File deleted successfully');
+            resetApp();
+        } catch (err: any) {
+            console.error('Error deleting file:', err);
+            setError('Не удалось удалить файл');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const renderContent = () => {
         if (loading) {
             return <div className="d-flex align-items-center justify-content-center h-100"><p className="fs-5 text-gray-300">Обработка файла...</p></div>;
@@ -656,6 +682,7 @@ const App: React.FC = () => {
                     filter={filter}
                     setFilter={setFilter}
                     onReset={resetApp}
+                    onDelete={handleDeleteFile}
                 >
                     {isKeyboardVisible && (
                         <NumericKeyboard
