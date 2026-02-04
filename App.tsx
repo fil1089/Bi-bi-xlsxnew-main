@@ -59,6 +59,7 @@ const App: React.FC = () => {
     const [selectedCell, setSelectedCell] = useState<{ row: number, col: number } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [userFiles, setUserFiles] = useState<any[]>([]);
     const initialFetchAttempted = useRef(false);
 
     // Auto-save integration
@@ -82,32 +83,32 @@ const App: React.FC = () => {
         const fetchUserFiles = async () => {
             if (!user || !supabase || initialFetchAttempted.current) return;
 
-            initialFetchAttempted.current = true; // Mark immediately to prevent multiple triggers
-            setLoading(true);
+            initialFetchAttempted.current = true;
             try {
                 const { data, error } = await supabase
                     .from('files')
                     .select('*')
                     .eq('user_id', user.id)
-                    .order('updated_at', { ascending: false })
-                    .limit(1);
+                    .order('updated_at', { ascending: false });
 
                 if (error) throw error;
 
-                if (data && data.length > 0) {
-                    const lastFile = data[0];
-                    setHeaders(lastFile.headers);
-                    setSheetData(lastFile.sheet_data);
-                    setFileName(lastFile.file_name);
-                    setHighlightedCells(lastFile.highlighted_cells || {});
-                    setNotes(lastFile.notes || {});
-                    setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
+                if (data) {
+                    setUserFiles(data);
+                    // Automatically load the first one if we don't have a filename yet
+                    if (data.length > 0 && !fileName) {
+                        const lastFile = data[0];
+                        setHeaders(lastFile.headers);
+                        setSheetData(lastFile.sheet_data);
+                        setFileName(lastFile.file_name);
+                        setHighlightedCells(lastFile.highlighted_cells || {});
+                        setNotes(lastFile.notes || {});
+                        setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
+                    }
                 }
             } catch (err: any) {
                 console.error('Error fetching user files:', err);
                 setError('Не удалось загрузить ваши файлы');
-            } finally {
-                setLoading(false);
             }
         };
 
@@ -120,7 +121,7 @@ const App: React.FC = () => {
         setSelectedCell(null);
     }, [filter]);
 
-    const handleFileProcessed = useCallback((newHeaders: string[], newData: SheetData, newFileName: string, worksheet: any) => {
+    const handleFileProcessed = useCallback(async (newHeaders: string[], newData: SheetData, newFileName: string, worksheet: any) => {
         const initialNotesData = readInitialNotes(worksheet);
         const initialHighlightsData = readInitialHighlights(worksheet);
 
@@ -139,7 +140,30 @@ const App: React.FC = () => {
         setKeyboardVisible(false);
         setHighlightMode(false);
         setSelectedCell(null);
-    }, []);
+
+        // Refresh file list
+        if (user && supabase) {
+            const { data } = await supabase
+                .from('files')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('updated_at', { ascending: false });
+            if (data) setUserFiles(data);
+        }
+    }, [user]);
+
+    const handleSelectFile = (file: any) => {
+        setHeaders(file.headers);
+        setSheetData(file.sheet_data);
+        setFileName(file.file_name);
+        setHighlightedCells(file.highlighted_cells || {});
+        setNotes(file.notes || {});
+        setColumnWidths(calculateAutoWidths(file.headers, file.sheet_data));
+        setSearchQuery('');
+        setFilter('all');
+        setKeyboardVisible(false);
+        setSelectedCell(null);
+    };
 
     const filteredData = useMemo(() => {
         const sourceData = sheetData.map((row, index) => ({ row, originalIndex: index }));
@@ -571,6 +595,47 @@ const App: React.FC = () => {
 
             console.log('File deleted successfully');
             resetApp();
+
+            // Refresh list
+            if (user && supabase) {
+                const { data } = await supabase
+                    .from('files')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('updated_at', { ascending: false });
+                if (data) setUserFiles(data);
+            }
+        } catch (err: any) {
+            console.error('Error deleting file:', err);
+            setError('Не удалось удалить файл');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteFileInternal = async (name: string) => {
+        if (!user) return;
+        try {
+            setLoading(true);
+            const { error: deleteError } = await supabase
+                .from('files')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('file_name', name);
+
+            if (deleteError) throw deleteError;
+
+            // Refresh list
+            const { data } = await supabase
+                .from('files')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('updated_at', { ascending: false });
+            if (data) setUserFiles(data);
+
+            if (fileName === name) {
+                resetApp();
+            }
         } catch (err: any) {
             console.error('Error deleting file:', err);
             setError('Не удалось удалить файл');
@@ -617,25 +682,22 @@ const App: React.FC = () => {
             );
         }
 
-        return (
-            <>
+        if (!fileName) {
+            return (
                 <FileUpload
                     onFileProcessed={handleFileProcessed}
                     setLoading={setLoading}
                     setError={setError}
                     onShowAuth={() => setShowAuthModal(true)}
-                    onLogout={async () => {
-                        await signOut();
-                        setFileName(null);
-                        setHeaders([]);
-                        setSheetData([]);
-                        initialFetchAttempted.current = false; // Allow re-fetch on new login
-                    }}
+                    onLogout={() => signOut()}
                     isAuthenticated={!!user}
                     userEmail={user?.email || null}
+                    userFiles={userFiles}
+                    onSelectFile={handleSelectFile}
+                    onDeleteFile={handleDeleteFileInternal}
                 />
-            </>
-        );
+            );
+        }
     };
 
     return (
@@ -690,7 +752,6 @@ const App: React.FC = () => {
                     filter={filter}
                     setFilter={setFilter}
                     onReset={resetApp}
-                    onDelete={handleDeleteFile}
                 >
                     {isKeyboardVisible && (
                         <NumericKeyboard

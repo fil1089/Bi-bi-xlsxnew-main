@@ -1,20 +1,18 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { ClearIcon, ChevronLeftIcon, ChevronRightIcon, FilterIcon, PlusIcon, TrashIcon } from './Icons';
+import { ClearIcon, ChevronLeftIcon, ChevronRightIcon, FilterIcon, PlusIcon, TrashIcon, HomeIcon } from './Icons';
 import { FilterType } from '../types';
 
 interface SearchBarProps {
     searchQuery: string;
     onClear: () => void;
     onFocus: () => void;
-    isKeyboardVisible: boolean; // Kept for interface compatibility, though styling handles it now
+    isKeyboardVisible: boolean;
     searchMatchCount: number;
     currentMatchIndex: number;
     onNavigateMatch: (direction: 'next' | 'prev') => void;
     filter: FilterType;
     setFilter: (filter: FilterType) => void;
     onReset: () => void;
-    onDelete?: () => void;
     children?: React.ReactNode;
 }
 
@@ -28,7 +26,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
     filter,
     setFilter,
     onReset,
-    onDelete,
     children
 }) => {
     const [isFilterOpen, setFilterOpen] = useState(false);
@@ -96,23 +93,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
                     onClick={onReset}
                     className="btn p-0 d-flex align-items-center justify-content-center transition-colors border border-secondary text-gray-200 bg-gray-900 flex-shrink-0"
                     style={{ height: '2.5rem', width: '2.5rem' }}
-                    title="Новый файл"
-                    aria-label="Загрузить новый файл"
+                    title="Файлы"
+                    aria-label="Перейти к списку файлов"
                 >
-                    <PlusIcon style={{ width: '1.25rem', height: '1.25rem' }} />
+                    <HomeIcon style={{ width: '1.25rem', height: '1.25rem' }} />
                 </button>
-
-                {onDelete && (
-                    <button
-                        onClick={onDelete}
-                        className="btn p-0 d-flex align-items-center justify-content-center transition-colors border border-secondary text-danger bg-gray-900 flex-shrink-0 hover-bg-red-900"
-                        style={{ height: '2.5rem', width: '2.5rem' }}
-                        title="Удалить файл"
-                        aria-label="Удалить текущий файл"
-                    >
-                        <TrashIcon style={{ width: '1.25rem', height: '1.25rem' }} />
-                    </button>
-                )}
 
                 <div className="position-relative flex-grow-1">
                     <input

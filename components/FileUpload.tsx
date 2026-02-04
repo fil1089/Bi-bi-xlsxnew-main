@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { UploadIcon } from './Icons';
+import { UploadIcon, TrashIcon, DocumentTextIcon } from './Icons';
 import { BiBiLogo } from './BiBiLogo';
 import { isAuthEnabled } from '../lib/supabase';
 import { normalizeCellValue } from '../lib/utils';
@@ -13,6 +13,9 @@ interface FileUploadProps {
     onLogout?: () => void;
     isAuthenticated?: boolean;
     userEmail?: string | null;
+    userFiles?: any[];
+    onSelectFile?: (file: any) => void;
+    onDeleteFile?: (fileName: string) => void;
 }
 
 declare const ExcelJS: any;
@@ -24,7 +27,10 @@ const FileUpload: React.FC<FileUploadProps> = ({
     onShowAuth,
     onLogout,
     isAuthenticated = false,
-    userEmail = null
+    userEmail = null,
+    userFiles = [],
+    onSelectFile,
+    onDeleteFile
 }) => {
 
     const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,13 +132,50 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
                 <button
                     onClick={handleClick}
-                    className="btn btn-lg btn-outline-secondary w-100 py-3 border-2 border-dashed bg-gray-800 text-gray-300 d-flex flex-column align-items-center justify-content-center gap-2"
-                    style={{ minHeight: '10rem' }}
+                    className="btn btn-lg btn-outline-secondary w-100 py-3 border-2 border-dashed bg-gray-800 text-gray-300 d-flex flex-column align-items-center justify-content-center gap-2 mb-4 transition-all hover:bg-gray-700"
+                    style={{ minHeight: '8rem' }}
                 >
-                    <UploadIcon style={{ width: '2.5rem', height: '2.5rem' }} />
-                    <span className="fw-bold">Нажмите, чтобы выбрать файл XLS или XLSX</span>
-                    <span className="small text-gray-400">Ваш файл обрабатывается локально в браузере.</span>
+                    <UploadIcon style={{ width: '2rem', height: '2rem' }} />
+                    <span className="fw-bold">Выбрать новый файл</span>
+                    <span className="small text-gray-400">Перетащите сюда или нажмите для выбора</span>
                 </button>
+
+                {isAuthenticated && userFiles.length > 0 && (
+                    <div className="text-start mt-2">
+                        <h2 className="h6 fw-bold text-gray-400 text-uppercase mb-3" style={{ letterSpacing: '0.05em', fontSize: '0.75rem' }}>Недавние файлы</h2>
+                        <div className="d-flex flex-column gap-2 overflow-y-auto pe-1" style={{ maxHeight: '15rem' }}>
+                            {userFiles.map((file) => (
+                                <div
+                                    key={file.id}
+                                    className="d-flex align-items-center justify-content-between p-3 bg-gray-800 rounded border border-secondary transition-all hover:bg-gray-700 group cursor-pointer"
+                                    onClick={() => onSelectFile?.(file)}
+                                >
+                                    <div className="d-flex align-items-center gap-3 overflow-hidden">
+                                        <DocumentTextIcon className="text-yellow-400 flex-shrink-0" style={{ width: '1.25rem', height: '1.25rem' }} />
+                                        <div className="overflow-hidden">
+                                            <div className="text-white small fw-medium text-truncate">{file.file_name}</div>
+                                            <div className="text-gray-500" style={{ fontSize: '0.7rem' }}>
+                                                {new Date(file.updated_at).toLocaleString()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (window.confirm(`Вы уверены, что хотите удалить файл "${file.file_name}"?`)) {
+                                                onDeleteFile?.(file.file_name);
+                                            }
+                                        }}
+                                        className="btn btn-link btn-sm text-gray-500 hover-text-danger p-1 border-0"
+                                        title="Удалить файл"
+                                    >
+                                        <TrashIcon style={{ width: '1rem', height: '1rem' }} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
