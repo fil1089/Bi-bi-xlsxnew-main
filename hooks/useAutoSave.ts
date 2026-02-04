@@ -14,19 +14,35 @@ interface AutoSaveData {
 export const useAutoSave = (
     data: AutoSaveData | null,
     delay: number = 2000,
-    onSavingChange?: (saving: boolean) => void
+    onSavingChange?: (saving: boolean) => void,
+    onSavingError?: (error: string | null) => void
 ) => {
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastSavedRef = useRef<string>('');
+    const isSavingRef = useRef<boolean>(false);
 
     const saveToSupabase = useCallback(async (saveData: AutoSaveData) => {
-        if (!supabase) return;
+        if (!supabase) {
+            console.warn('AutoSave: Supabase client not initialized. Check your environment variables.');
+            onSavingError?.('Ошибка инициализации Supabase. Проверьте настройки Vercel.');
+            return;
+        }
+
+        if (isSavingRef.current) {
+            console.log('AutoSave: Save already in progress, skipping this cycle.');
+            return;
+        }
 
         try {
             const currentDataString = JSON.stringify(saveData);
-            if (currentDataString === lastSavedRef.current) return;
+            if (currentDataString === lastSavedRef.current) {
+                return;
+            }
 
+            console.log('AutoSave: Starting save for file:', saveData.file_name);
+            isSavingRef.current = true;
             onSavingChange?.(true);
+            onSavingError?.(null);
 
             // Check if file already exists for this user and name
             const { data: existingFiles, error: fetchError } = await supabase
@@ -36,10 +52,14 @@ export const useAutoSave = (
                 .eq('file_name', saveData.file_name)
                 .limit(1);
 
-            if (fetchError) throw fetchError;
+            if (fetchError) {
+                console.error('AutoSave: Fetch error:', fetchError);
+                throw fetchError;
+            }
 
             if (existingFiles && existingFiles.length > 0) {
                 // Update
+                console.log('AutoSave: Updating existing file record:', existingFiles[0].id);
                 const { error: updateError } = await supabase
                     .from('files')
                     .update({
@@ -51,9 +71,13 @@ export const useAutoSave = (
                     })
                     .eq('id', existingFiles[0].id);
 
-                if (updateError) throw updateError;
+                if (updateError) {
+                    console.error('AutoSave: Update error:', updateError);
+                    throw updateError;
+                }
             } else {
                 // Insert
+                console.log('AutoSave: Creating new file record');
                 const { error: insertError } = await supabase
                     .from('files')
                     .insert([{
@@ -66,17 +90,22 @@ export const useAutoSave = (
                         highlighted_cells: saveData.highlighted_cells
                     }]);
 
-                if (insertError) throw insertError;
+                if (insertError) {
+                    console.error('AutoSave: Insert error:', insertError);
+                    throw insertError;
+                }
             }
 
             lastSavedRef.current = currentDataString;
-            console.log('File auto-saved successfully');
-        } catch (err) {
-            console.error('Error auto-saving to Supabase:', err);
+            console.log('AutoSave: Success');
+        } catch (err: any) {
+            console.error('AutoSave: Final catch error:', err);
+            onSavingError?.(err.message || 'Ошибка сети');
         } finally {
+            isSavingRef.current = false;
             onSavingChange?.(false);
         }
-    }, [onSavingChange]);
+    }, [onSavingChange, onSavingError]);
 
     useEffect(() => {
         if (!data || !data.user_id || !data.file_name) return;
