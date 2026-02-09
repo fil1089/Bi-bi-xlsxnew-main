@@ -80,7 +80,7 @@ const App: React.FC = () => {
 
     // Fetch user files on login
     useEffect(() => {
-        const fetchUserFiles = async () => {
+        const fetchUserFiles = async (retryCount = 0) => {
             if (!user || !supabase || initialFetchAttempted.current) return;
 
             initialFetchAttempted.current = true;
@@ -108,7 +108,22 @@ const App: React.FC = () => {
                 }
             } catch (err: any) {
                 console.error('Error fetching user files:', err);
-                setError('Не удалось загрузить ваши файлы');
+
+                // Retry on network errors (Load failed)
+                if (err instanceof TypeError && err.message.includes('Load failed') && retryCount < 2) {
+                    console.log(`Retrying file fetch (attempt ${retryCount + 2}/3)...`);
+                    initialFetchAttempted.current = false;
+                    const delay = 1000 * Math.pow(2, retryCount);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchUserFiles(retryCount + 1);
+                }
+
+                // User-friendly error message
+                if (err instanceof TypeError && err.message.includes('Load failed')) {
+                    setError('Не удалось загрузить ваши файлы. Проверьте подключение к интернету.');
+                } else {
+                    setError('Не удалось загрузить ваши файлы');
+                }
             }
         };
 

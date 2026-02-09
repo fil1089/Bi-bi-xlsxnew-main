@@ -21,6 +21,30 @@ export const useAutoSave = (
     const lastSavedRef = useRef<string>('');
     const isSavingRef = useRef<boolean>(false);
 
+    const retryWithBackoff = useCallback(async <T>(
+        fn: () => Promise<T>,
+        maxRetries: number = 3,
+        baseDelay: number = 1000
+    ): Promise<T> => {
+        let lastError: any;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (err: any) {
+                lastError = err;
+                // Only retry on network errors (TypeError: Load failed)
+                if (err instanceof TypeError && err.message.includes('Load failed')) {
+                    const delay = baseDelay * Math.pow(2, attempt);
+                    console.log(`AutoSave: Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    throw err; // Don't retry non-network errors
+                }
+            }
+        }
+        throw lastError;
+    }, []);
+
     const saveToSupabase = useCallback(async (saveData: AutoSaveData) => {
         if (!supabase) {
             console.warn('AutoSave: Supabase client not initialized. Check your environment variables.');
@@ -44,13 +68,15 @@ export const useAutoSave = (
             onSavingChange?.(true);
             onSavingError?.(null);
 
-            // Check if file already exists for this user and name
-            const { data: existingFiles, error: fetchError } = await supabase
-                .from('files')
-                .select('id')
-                .eq('user_id', saveData.user_id)
-                .eq('file_name', saveData.file_name)
-                .limit(1);
+            // Check if file already exists for this user and name (with retry)
+            const { data: existingFiles, error: fetchError } = await retryWithBackoff(async () => {
+                return await supabase
+                    .from('files')
+                    .select('id')
+                    .eq('user_id', saveData.user_id)
+                    .eq('file_name', saveData.file_name)
+                    .limit(1);
+            });
 
             if (fetchError) {
                 console.error('AutoSave: Fetch error:', fetchError);
@@ -58,37 +84,41 @@ export const useAutoSave = (
             }
 
             if (existingFiles && existingFiles.length > 0) {
-                // Update
+                // Update (with retry)
                 console.log('AutoSave: Updating existing file record:', existingFiles[0].id);
-                const { error: updateError } = await supabase
-                    .from('files')
-                    .update({
-                        sheet_data: saveData.sheet_data,
-                        headers: saveData.headers,
-                        notes: saveData.notes,
-                        highlighted_cells: saveData.highlighted_cells,
-                        updated_at: new Date().toISOString()
-                    })
-                    .eq('id', existingFiles[0].id);
+                const { error: updateError } = await retryWithBackoff(async () => {
+                    return await supabase
+                        .from('files')
+                        .update({
+                            sheet_data: saveData.sheet_data,
+                            headers: saveData.headers,
+                            notes: saveData.notes,
+                            highlighted_cells: saveData.highlighted_cells,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', existingFiles[0].id);
+                });
 
                 if (updateError) {
                     console.error('AutoSave: Update error:', updateError);
                     throw updateError;
                 }
             } else {
-                // Insert
+                // Insert (with retry)
                 console.log('AutoSave: Creating new file record');
-                const { error: insertError } = await supabase
-                    .from('files')
-                    .insert([{
-                        user_id: saveData.user_id,
-                        file_name: saveData.file_name,
-                        file_data: saveData.file_data,
-                        sheet_data: saveData.sheet_data,
-                        headers: saveData.headers,
-                        notes: saveData.notes,
-                        highlighted_cells: saveData.highlighted_cells
-                    }]);
+                const { error: insertError } = await retryWithBackoff(async () => {
+                    return await supabase
+                        .from('files')
+                        .insert([{
+                            user_id: saveData.user_id,
+                            file_name: saveData.file_name,
+                            file_data: saveData.file_data,
+                            sheet_data: saveData.sheet_data,
+                            headers: saveData.headers,
+                            notes: saveData.notes,
+                            highlighted_cells: saveData.highlighted_cells
+                        }]);
+                });
 
                 if (insertError) {
                     console.error('AutoSave: Insert error:', insertError);
@@ -101,7 +131,13 @@ export const useAutoSave = (
             onSavingError?.(null); // Explicitly clear error on success
         } catch (err: any) {
             console.error('AutoSave: Final catch error:', err);
-            const errorMessage = err.message || 'Ошибка сети';
+            // More user-friendly error messages
+            let errorMessage = 'Ошибка сети';
+            if (err instanceof TypeError && err.message.includes('Load failed')) {
+                errorMessage = 'Проблема с сетью. Проверьте подключение к интернету.';
+            } else if (err.message) {
+                errorMessage = err.message;
+            }
             onSavingError?.(errorMessage);
 
             // If it's a session error, we might want to log it specifically
@@ -112,7 +148,7 @@ export const useAutoSave = (
             isSavingRef.current = false;
             onSavingChange?.(false);
         }
-    }, [onSavingChange, onSavingError]);
+    }, [onSavingChange, onSavingError, retryWithBackoff]);
 
     useEffect(() => {
         if (!data || !data.user_id || !data.file_name) return;

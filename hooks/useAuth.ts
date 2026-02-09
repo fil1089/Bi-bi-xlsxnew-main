@@ -37,22 +37,44 @@ export const useAuth = () => {
         if (!supabase) {
             return { data: null, error: { message: 'Authentication not configured' } };
         }
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
-        return { data, error };
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+            return { data, error };
+        } catch (err: any) {
+            // Handle network errors specifically
+            if (err instanceof TypeError && err.message.includes('Load failed')) {
+                return {
+                    data: null,
+                    error: { message: 'Проблема с сетью. Проверьте подключение к интернету.' }
+                };
+            }
+            return { data: null, error: { message: err.message || 'Произошла ошибка' } };
+        }
     };
 
     const signUp = async (email: string, password: string) => {
         if (!supabase) {
             return { data: null, error: { message: 'Authentication not configured' } };
         }
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-        });
-        return { data, error };
+        try {
+            const { data, error } = await supabase.auth.signUp({
+                email,
+                password,
+            });
+            return { data, error };
+        } catch (err: any) {
+            // Handle network errors specifically
+            if (err instanceof TypeError && err.message.includes('Load failed')) {
+                return {
+                    data: null,
+                    error: { message: 'Проблема с сетью. Проверьте подключение к интернету.' }
+                };
+            }
+            return { data: null, error: { message: err.message || 'Произошла ошибка' } };
+        }
     };
 
     const signOut = async () => {

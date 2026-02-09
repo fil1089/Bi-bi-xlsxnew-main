@@ -11,7 +11,13 @@ export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
             autoRefreshToken: true,
             detectSessionInUrl: true,
             storageKey: 'bibi-auth-token',
-        }
+            flowType: 'pkce',
+        },
+        global: {
+            headers: {
+                'X-Client-Info': 'bibi-xlsx-app',
+            },
+        },
     })
     : null;
 
