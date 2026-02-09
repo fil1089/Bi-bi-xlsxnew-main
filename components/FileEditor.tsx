@@ -66,7 +66,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
         const typeLabel = selectionMode === 'col' ? (count > 1 ? 'столбцы' : 'столбец') : (count > 1 ? 'строки' : 'строку');
 
         if (window.confirm(`Удалить выбранные ${count} ${typeLabel}?`)) {
-            const indices = Array.from(selectedIndices).sort((a, b) => b - a);
+            const indices = Array.from(selectedIndices).map(Number).sort((a, b) => b - a);
 
             if (selectionMode === 'col') {
                 onDeleteColumns(indices);
@@ -117,7 +117,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
                 <div className="d-flex align-items-center gap-2 pt-1 border-top border-secondary border-opacity-25">
                     <button
                         onClick={onSwitchToSearch}
-                        className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-2 fw-bold"
+                        className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-1.5 fw-bold"
                     >
                         <SearchIcon className="w-4 h-4" />
                         <span>В поиск</span>
@@ -125,7 +125,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
 
                     <button
                         onClick={onDownload}
-                        className="btn btn-sm btn-success d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-2 fw-bold"
+                        className="btn btn-sm btn-success d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-1.5 fw-bold"
                     >
                         <SaveIcon className="w-4 h-4" />
                         <span>Скачать</span>
