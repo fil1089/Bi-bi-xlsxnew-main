@@ -341,19 +341,19 @@ export const EditIcon: React.FC<{ className?: string, style?: React.CSSPropertie
 export const BackArrowIcon: React.FC<{ className?: string, style?: React.CSSProperties }> = ({ className, style }) => (
     <svg
         xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={2}
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
         className={className}
         style={style}
     >
-        <path d="M3 10h10a5 5 0 0 1 5 5v2" />
-        <path d="M3 10l6-6" />
-        <path d="M3 10l6 6" />
-        <path d="M3 10l6 6" />
+        <path d="M19 12H5" />
+        <polyline points="12 19 5 12 12 5" />
     </svg>
 );
 

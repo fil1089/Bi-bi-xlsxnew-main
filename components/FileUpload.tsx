@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { UploadIcon, TrashIcon, DocumentTextIcon } from './Icons';
+import { UploadIcon, TrashIcon, DocumentTextIcon, CameraIcon } from './Icons';
 import { BiBiLogo } from './BiBiLogo';
 import { isAuthEnabled } from '../lib/supabase';
 import { normalizeCellValue } from '../lib/utils';
@@ -16,6 +16,7 @@ interface FileUploadProps {
     userFiles?: any[];
     onSelectFile?: (file: any) => void;
     onDeleteFile?: (fileName: string) => void;
+    onScan?: () => void;
 }
 
 declare const ExcelJS: any;
@@ -30,7 +31,8 @@ const FileUpload: React.FC<FileUploadProps> = ({
     userEmail = null,
     userFiles = [],
     onSelectFile,
-    onDeleteFile
+    onDeleteFile,
+    onScan
 }) => {
 
     const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,12 +134,20 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
                 <button
                     onClick={handleClick}
-                    className="btn btn-lg btn-outline-secondary w-100 py-3 border-2 border-dashed bg-gray-800 text-gray-300 d-flex flex-column align-items-center justify-content-center gap-2 mb-4 transition-all hover:bg-gray-700"
+                    className="btn btn-lg btn-outline-secondary w-100 py-3 border-2 border-dashed bg-gray-800 text-gray-300 d-flex flex-column align-items-center justify-content-center gap-2 mb-2 transition-all hover:bg-gray-700"
                     style={{ minHeight: '8rem' }}
                 >
                     <UploadIcon style={{ width: '2rem', height: '2rem' }} />
                     <span className="fw-bold">Выбрать новый файл</span>
                     <span className="small text-gray-400">Перетащите сюда или нажмите для выбора</span>
+                </button>
+
+                <button
+                    onClick={onScan}
+                    className="btn btn-dark border-secondary w-100 mb-4 py-3 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-lg hover:bg-gray-800 transition-colors"
+                >
+                    <CameraIcon className="w-5 h-5 text-warning" />
+                    <span className="fw-bold text-white">Сканировать таблицу по фото</span>
                 </button>
 
                 {isAuthenticated && userFiles.length > 0 && (

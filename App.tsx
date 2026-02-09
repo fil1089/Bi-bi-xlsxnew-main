@@ -839,30 +839,19 @@ const App: React.FC = () => {
 
         if (!fileName) {
             return (
-                <div className="d-flex flex-column h-100 align-items-center justify-content-center p-3 overflow-auto">
-                    <div className="w-100" style={{ maxWidth: '600px' }}>
-                        <FileUpload
-                            onFileProcessed={handleFileProcessed}
-                            setLoading={setLoading}
-                            setError={setError}
-                            onShowAuth={() => setShowAuthModal(true)}
-                            onLogout={() => signOut()}
-                            isAuthenticated={!!user}
-                            userEmail={user?.email || null}
-                            userFiles={userFiles}
-                            onSelectFile={handleSelectFile}
-                            onDeleteFile={handleDeleteFileInternal}
-                        />
-
-                        <button
-                            onClick={() => setIsScanning(true)}
-                            className="btn btn-dark border-secondary w-100 mt-3 py-3 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-lg hover:bg-gray-800 transition-colors"
-                        >
-                            <CameraIcon className="w-5 h-5 text-warning" />
-                            <span className="fw-bold text-white">Сканировать таблицу по фото</span>
-                        </button>
-                    </div>
-                </div>
+                <FileUpload
+                    onFileProcessed={handleFileProcessed}
+                    setLoading={setLoading}
+                    setError={setError}
+                    onShowAuth={() => setShowAuthModal(true)}
+                    onLogout={() => signOut()}
+                    isAuthenticated={!!user}
+                    userEmail={user?.email || null}
+                    userFiles={userFiles}
+                    onSelectFile={handleSelectFile}
+                    onDeleteFile={handleDeleteFileInternal}
+                    onScan={() => setIsScanning(true)}
+                />
             );
         }
     };
