@@ -126,17 +126,24 @@ const App: React.FC = () => {
             } catch (err: any) {
                 console.error('Error fetching user files:', err);
 
-                // Retry on network errors (Load failed)
-                if (err instanceof TypeError && err.message.includes('Load failed') && retryCount < 2) {
-                    console.log(`Retrying file fetch (attempt ${retryCount + 2}/3)...`);
+                // Check for network-related errors (Load failed, AbortError, network errors)
+                const isNetworkError =
+                    (err instanceof TypeError && err.message.includes('Load failed')) ||
+                    (err.name === 'AbortError') ||
+                    (err.message?.includes('network')) ||
+                    (err.message?.includes('fetch'));
+
+                // Retry on network errors - increased to 5 attempts for mobile
+                if (isNetworkError && retryCount < 4) {
+                    console.log(`Retrying file fetch (attempt ${retryCount + 2}/5)...`);
                     initialFetchAttempted.current = false;
-                    const delay = 1000 * Math.pow(2, retryCount);
+                    const delay = 1500 * Math.pow(2, retryCount); // Longer delays for mobile
                     await new Promise(resolve => setTimeout(resolve, delay));
                     return fetchUserFiles(retryCount + 1);
                 }
 
                 // User-friendly error message
-                if (err instanceof TypeError && err.message.includes('Load failed')) {
+                if (isNetworkError) {
                     setError('Не удалось загрузить ваши файлы. Проверьте подключение к интернету.');
                 } else {
                     setError('Не удалось загрузить ваши файлы');

@@ -23,8 +23,8 @@ export const useAutoSave = (
 
     const retryWithBackoff = useCallback(async <T>(
         fn: () => Promise<T>,
-        maxRetries: number = 3,
-        baseDelay: number = 1000
+        maxRetries: number = 5, // Increased for mobile
+        baseDelay: number = 1500 // Longer base delay for mobile networks
     ): Promise<T> => {
         let lastError: any;
         for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -32,8 +32,14 @@ export const useAutoSave = (
                 return await fn();
             } catch (err: any) {
                 lastError = err;
-                // Only retry on network errors (TypeError: Load failed)
-                if (err instanceof TypeError && err.message.includes('Load failed')) {
+                // Check for network-related errors (Load failed, AbortError, network errors)
+                const isNetworkError =
+                    (err instanceof TypeError && err.message.includes('Load failed')) ||
+                    (err.name === 'AbortError') ||
+                    (err.message?.includes('network')) ||
+                    (err.message?.includes('fetch'));
+
+                if (isNetworkError) {
                     const delay = baseDelay * Math.pow(2, attempt);
                     console.log(`AutoSave: Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
                     await new Promise(resolve => setTimeout(resolve, delay));
@@ -134,9 +140,16 @@ export const useAutoSave = (
             console.error('AutoSave: Error message:', err.message);
             console.error('AutoSave: Error stack:', err.stack);
 
+            // Check for network-related errors
+            const isNetworkError =
+                (err instanceof TypeError && err.message.includes('Load failed')) ||
+                (err.name === 'AbortError') ||
+                (err.message?.includes('network')) ||
+                (err.message?.includes('fetch'));
+
             // More user-friendly error messages
             let errorMessage = 'Ошибка сохранения';
-            if (err instanceof TypeError && err.message.includes('Load failed')) {
+            if (isNetworkError) {
                 errorMessage = 'Проблема с сетью. Проверьте подключение к интернету.';
             } else if (err.message) {
                 errorMessage = `Ошибка: ${err.message}`;
