@@ -3,15 +3,16 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Custom fetch with timeout for mobile networks
-const fetchWithTimeout = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
+// Simple fetch wrapper for better iOS Safari compatibility
+// Note: Removed AbortController as it can cause issues on iOS Safari
+const customFetch = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
     return fetch(url, {
         ...options,
-        signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId));
+        // keepalive helps with requests during page unload on mobile
+        keepalive: true,
+        // Ensure credentials are included for CORS
+        credentials: 'same-origin',
+    });
 };
 
 // Only create client if credentials are provided
@@ -29,7 +30,7 @@ export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
             headers: {
                 'X-Client-Info': 'bibi-xlsx-app',
             },
-            fetch: fetchWithTimeout,
+            fetch: customFetch,
         },
     })
     : null;
