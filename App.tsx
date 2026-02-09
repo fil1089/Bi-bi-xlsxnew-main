@@ -42,7 +42,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearchQuery(searchQuery);
-        }, 300);
+        }, 500);
         return () => clearTimeout(timer);
     }, [searchQuery]);
     const [filter, setFilter] = useState<FilterType>('all');

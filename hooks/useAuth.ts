@@ -81,8 +81,16 @@ export const useAuth = () => {
         if (!supabase) {
             return { error: { message: 'Authentication not configured' } };
         }
-        const { error } = await supabase.auth.signOut();
-        return { error };
+        try {
+            const { error } = await supabase.auth.signOut();
+            return { error };
+        } catch (err: any) {
+            // Handle network errors specifically
+            if (err instanceof TypeError && err.message.includes('Load failed')) {
+                return { error: { message: 'Проблема с сетью. Проверьте подключение к интернету.' } };
+            }
+            return { error: { message: err.message || 'Произошла ошибка' } };
+        }
     };
 
     return {

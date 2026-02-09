@@ -107,20 +107,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
                         readOnly
                         onFocus={onFocus}
                         className={`form-control bg-gray-900 border-secondary text-white cursor-pointer focus-warning ${searchQuery ? 'border-warning' : ''}`}
-                        style={{ height: '2.5rem', fontSize: '0.875rem', paddingLeft: '0.75rem', paddingRight: '2.5rem' }}
+                        style={{ height: '2.5rem', fontSize: '0.875rem', paddingLeft: '0.75rem', paddingRight: '0.75rem' }}
                         aria-label="Поле поиска, нажмите для ввода"
                     />
-
-                    {searchQuery && (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onClear(); }}
-                            className="position-absolute top-50 translate-middle-y end-0 d-flex align-items-center pe-3 bg-transparent border-0 text-gray-400"
-                            style={{ height: '100%' }}
-                            aria-label="Очистить поиск"
-                        >
-                            <ClearIcon style={{ width: '1.25rem', height: '1.25rem' }} />
-                        </button>
-                    )}
                 </div>
                 {searchMatchCount > 0 && (
                     <div className="d-flex align-items-center gap-1 bg-gray-800 border border-secondary rounded px-2 flex-shrink-0" style={{ height: '2.5rem' }}>
