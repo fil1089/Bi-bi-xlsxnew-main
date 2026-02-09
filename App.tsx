@@ -224,73 +224,51 @@ const App: React.FC = () => {
         setPendingFile(null);
     };
 
-    const handleDeleteRow = useCallback((rowIndex: number) => {
-        setSheetData(prev => {
-            const newData = [...prev];
-            newData.splice(rowIndex, 1);
-            return newData;
-        });
+    const handleDeleteRows = useCallback((rowIndices: number[]) => {
+        const sortedIndices = [...new Set(rowIndices)].sort((a, b) => b - a);
+        const deletedSet = new Set(sortedIndices);
 
-        setNotes(prev => {
-            const newNotes: CellNotes = {};
-            Object.keys(prev).forEach(key => {
-                const [r, c] = key.split('-').map(Number);
-                if (r < rowIndex) newNotes[key] = prev[key];
-                else if (r > rowIndex) newNotes[`${r - 1}-${c}`] = prev[key];
-            });
-            return newNotes;
-        });
+        setSheetData(prev => prev.filter((_, index) => !deletedSet.has(index)));
 
-        setHighlightedCells(prev => {
-            const newHighlights: HighlightedCells = {};
-            Object.keys(prev).forEach(key => {
+        const remapKeys = (obj: any) => {
+            const newObj: any = {};
+            Object.keys(obj).forEach(key => {
                 const [r, c] = key.split('-').map(Number);
-                if (r < rowIndex) newHighlights[key] = prev[key];
-                else if (r > rowIndex) newHighlights[`${r - 1}-${c}`] = prev[key];
+                if (deletedSet.has(r)) return;
+                const shift = sortedIndices.filter(idx => idx < r).length;
+                newObj[`${r - shift}-${c}`] = obj[key];
             });
-            return newHighlights;
-        });
+            return newObj;
+        };
+
+        setNotes(prev => remapKeys(prev));
+        setHighlightedCells(prev => remapKeys(prev));
     }, []);
 
-    const handleDeleteColumn = useCallback((colIndex: number) => {
-        setHeaders(prev => {
-            const newHeaders = [...prev];
-            newHeaders.splice(colIndex, 1);
-            return newHeaders;
-        });
-        setSheetData(prev => {
-            return prev.map(row => {
-                if (!row) return row;
-                const newRow = [...row];
-                newRow.splice(colIndex, 1);
-                return newRow;
-            });
-        });
-        setColumnWidths(prev => {
-            const newWidths = [...prev];
-            newWidths.splice(colIndex, 1);
-            return newWidths;
-        });
+    const handleDeleteColumns = useCallback((colIndices: number[]) => {
+        const sortedIndices = [...new Set(colIndices)].sort((a, b) => b - a);
+        const deletedSet = new Set(sortedIndices);
 
-        setNotes(prev => {
-            const newNotes: CellNotes = {};
-            Object.keys(prev).forEach(key => {
-                const [r, c] = key.split('-').map(Number);
-                if (c < colIndex) newNotes[key] = prev[key];
-                else if (c > colIndex) newNotes[`${r}-${c - 1}`] = prev[key];
-            });
-            return newNotes;
-        });
+        setHeaders(prev => prev.filter((_, index) => !deletedSet.has(index)));
+        setSheetData(prev => prev.map(row => {
+            if (!row) return row;
+            return row.filter((_, index) => !deletedSet.has(index));
+        }));
+        setColumnWidths(prev => prev.filter((_, index) => !deletedSet.has(index)));
 
-        setHighlightedCells(prev => {
-            const newHighlights: HighlightedCells = {};
-            Object.keys(prev).forEach(key => {
+        const remapKeys = (obj: any) => {
+            const newObj: any = {};
+            Object.keys(obj).forEach(key => {
                 const [r, c] = key.split('-').map(Number);
-                if (c < colIndex) newHighlights[key] = prev[key];
-                else if (c > colIndex) newHighlights[`${r}-${c - 1}`] = prev[key];
+                if (deletedSet.has(c)) return;
+                const shift = sortedIndices.filter(idx => idx < c).length;
+                newObj[`${r}-${c - shift}`] = obj[key];
             });
-            return newHighlights;
-        });
+            return newObj;
+        };
+
+        setNotes(prev => remapKeys(prev));
+        setHighlightedCells(prev => remapKeys(prev));
     }, []);
 
     const filteredData = useMemo(() => {
@@ -802,9 +780,11 @@ const App: React.FC = () => {
                     headers={headers}
                     data={sheetData}
                     columnWidths={columnWidths}
-                    onDeleteRow={handleDeleteRow}
-                    onDeleteColumn={handleDeleteColumn}
+                    onDeleteRows={handleDeleteRows}
+                    onDeleteColumns={handleDeleteColumns}
                     onBack={resetApp}
+                    onSwitchToSearch={() => setAppMode('search')}
+                    onDownload={handleSaveFile}
                     fileName={fileName}
                 />
             );
