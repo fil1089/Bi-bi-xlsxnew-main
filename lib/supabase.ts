@@ -3,18 +3,6 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Simple fetch wrapper for better iOS Safari compatibility
-// Note: Removed AbortController as it can cause issues on iOS Safari
-const customFetch = (url: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-    return fetch(url, {
-        ...options,
-        // keepalive helps with requests during page unload on mobile
-        keepalive: true,
-        // Ensure credentials are included for CORS
-        credentials: 'same-origin',
-    });
-};
-
 // Only create client if credentials are provided
 export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
     ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -23,14 +11,14 @@ export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
             autoRefreshToken: true,
             detectSessionInUrl: true,
             storageKey: 'bibi-auth-token',
-            flowType: 'pkce',
+            // Changed from 'pkce' to 'implicit' for better iOS Safari compatibility
+            flowType: 'implicit',
             storage: typeof window !== 'undefined' ? window.localStorage : undefined,
         },
         global: {
             headers: {
                 'X-Client-Info': 'bibi-xlsx-app',
             },
-            fetch: customFetch,
         },
     })
     : null;
