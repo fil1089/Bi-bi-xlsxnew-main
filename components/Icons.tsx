@@ -350,6 +350,26 @@ export const BackArrowIcon: React.FC<{ className?: string, style?: React.CSSProp
         className={className}
         style={style}
     >
-        <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+        <path d="M3 10h10a5 5 0 0 1 5 5v2" />
+        <path d="M3 10l6-6" />
+        <path d="M3 10l6 6" />
+        <path d="M3 10l6 6" />
+    </svg>
+);
+
+export const CameraIcon: React.FC<{ className?: string, style?: React.CSSProperties }> = ({ className, style }) => (
+    <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={className}
+        style={style}
+    >
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+        <circle cx="12" cy="13" r="4" />
     </svg>
 );

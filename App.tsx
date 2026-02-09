@@ -6,7 +6,8 @@ import FileEditor from './components/FileEditor';
 import ModeSelectionModal from './components/ModeSelectionModal';
 import NumericKeyboard from './components/NumericKeyboard';
 import SearchBar from './components/HighlightMenu'; // Using HighlightMenu file for the new SearchBar component
-import { ChevronDownIcon, PlusIcon, SaveIcon, HighlightIcon, DocumentTextIcon, UserIcon, CloudIcon } from './components/Icons';
+import TableScanner from './components/TableScanner';
+import { ChevronDownIcon, PlusIcon, SaveIcon, HighlightIcon, DocumentTextIcon, UserIcon, CloudIcon, CameraIcon } from './components/Icons';
 import AuthModal from './components/AuthModal';
 import { BiBiLogo } from './components/BiBiLogo';
 import { supabase, isAuthEnabled } from './lib/supabase';
@@ -34,6 +35,7 @@ const App: React.FC = () => {
     const [fileName, setFileName] = useState<string | null>(null);
     const [headers, setHeaders] = useState<string[]>([]);
     const [sheetData, setSheetData] = useState<SheetData>([]);
+    const [isScanning, setIsScanning] = useState(false);
 
     // New state for mode selection
     const [appMode, setAppMode] = useState<'home' | 'search' | 'editor'>('home');
@@ -150,6 +152,27 @@ const App: React.FC = () => {
     useEffect(() => {
         setSelectedCell(null);
     }, [filter]);
+
+    const handleTableExtracted = useCallback((data: string[][]) => {
+        setIsScanning(false);
+        if (data.length === 0) return;
+
+        // Treat first row as headers
+        const newHeaders = data[0].map((h, i) => h || `Col ${i + 1}`);
+        const newData = data.slice(1);
+        const newFileName = `Scanned ${new Date().toLocaleTimeString().replace(/:/g, '-')}.xlsx`;
+        const widths = calculateAutoWidths(newHeaders, newData);
+
+        setPendingFile({
+            headers: newHeaders,
+            data: newData,
+            fileName: newFileName,
+            worksheet: null,
+            notes: {},
+            highlightedCells: {},
+            columnWidths: widths
+        });
+    }, []);
 
     const handleFileProcessed = useCallback(async (newHeaders: string[], newData: SheetData, newFileName: string, worksheet: any) => {
         const initialNotesData = readInitialNotes(worksheet);
@@ -816,24 +839,43 @@ const App: React.FC = () => {
 
         if (!fileName) {
             return (
-                <FileUpload
-                    onFileProcessed={handleFileProcessed}
-                    setLoading={setLoading}
-                    setError={setError}
-                    onShowAuth={() => setShowAuthModal(true)}
-                    onLogout={() => signOut()}
-                    isAuthenticated={!!user}
-                    userEmail={user?.email || null}
-                    userFiles={userFiles}
-                    onSelectFile={handleSelectFile}
-                    onDeleteFile={handleDeleteFileInternal}
-                />
+                <div className="d-flex flex-column h-100 align-items-center justify-content-center p-3 overflow-auto">
+                    <div className="w-100" style={{ maxWidth: '600px' }}>
+                        <FileUpload
+                            onFileProcessed={handleFileProcessed}
+                            setLoading={setLoading}
+                            setError={setError}
+                            onShowAuth={() => setShowAuthModal(true)}
+                            onLogout={() => signOut()}
+                            isAuthenticated={!!user}
+                            userEmail={user?.email || null}
+                            userFiles={userFiles}
+                            onSelectFile={handleSelectFile}
+                            onDeleteFile={handleDeleteFileInternal}
+                        />
+
+                        <button
+                            onClick={() => setIsScanning(true)}
+                            className="btn btn-dark border-secondary w-100 mt-3 py-3 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-lg hover:bg-gray-800 transition-colors"
+                        >
+                            <CameraIcon className="w-5 h-5 text-warning" />
+                            <span className="fw-bold text-white">Сканировать таблицу по фото</span>
+                        </button>
+                    </div>
+                </div>
             );
         }
     };
 
     return (
         <div className="d-flex flex-column position-relative" style={{ height: '100vh', overflow: 'hidden' }}>
+            {isScanning && (
+                <TableScanner
+                    onExtract={handleTableExtracted}
+                    onClose={() => setIsScanning(false)}
+                />
+            )}
+
             {pendingFile && (
                 <ModeSelectionModal
                     fileName={pendingFile.fileName}

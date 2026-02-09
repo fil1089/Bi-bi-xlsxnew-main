@@ -107,7 +107,6 @@ const FileEditor: React.FC<FileEditorProps> = ({
                                 onClick={handleDelete}
                                 className="btn btn-sm btn-danger d-flex align-items-center gap-1 fw-bold px-2 py-1 shadow-sm"
                             >
-                                <TrashIcon className="w-4 h-4" />
                                 <span>Удалить ({selectedIndices.size})</span>
                             </button>
                         )}
