@@ -82,55 +82,54 @@ const FileEditor: React.FC<FileEditorProps> = ({
     return (
         <div className="d-flex flex-column h-100 bg-black text-white">
             {/* Toolbar */}
-            <div className="d-flex align-items-center justify-content-between p-3 border-bottom border-secondary bg-gray-900 shadow-sm z-20 gap-3">
-                <div className="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
-                    <button
-                        onClick={onBack}
-                        className="btn btn-outline-secondary d-flex align-items-center justify-content-center px-3"
-                        title="Назад"
-                    >
-                        <ChevronLeftIcon className="w-5 h-5" />
-                    </button>
+            <div className="d-flex flex-column p-2 border-bottom border-secondary bg-gray-900 shadow-sm z-20">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                    <div className="d-flex align-items-center gap-2 overflow-hidden">
+                        <button
+                            onClick={onBack}
+                            className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center p-2"
+                            title="Назад"
+                        >
+                            <ChevronLeftIcon className="w-5 h-5" />
+                        </button>
 
-                    <div className="d-flex flex-column truncate">
-                        <span className="text-white fw-bold small text-truncate">{fileName}</span>
-                        <span className="text-gray-400 x-small text-truncate">
-                            {selectionMode ? `Выбрано: ${selectedIndices.size}` : 'Режим редактирования'}
-                        </span>
+                        <div className="d-flex flex-column truncate">
+                            <span className="text-white fw-bold small text-truncate">{fileName}</span>
+                            <span className="text-gray-400 x-small text-truncate">
+                                {selectionMode ? `Выбрано: ${selectedIndices.size}` : 'Режим редактирования'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="d-flex align-items-center gap-2">
+                        {selectionMode && selectedIndices.size > 0 && (
+                            <button
+                                onClick={handleDelete}
+                                className="btn btn-sm btn-danger d-flex align-items-center gap-1 fw-bold px-2 py-1 shadow-sm"
+                            >
+                                <TrashIcon className="w-4 h-4" />
+                                <span>Удалить ({selectedIndices.size})</span>
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                    {selectionMode && selectedIndices.size > 0 ? (
-                        <button
-                            onClick={handleDelete}
-                            className="btn btn-danger d-flex align-items-center gap-2 fw-medium animate-pulse px-3"
-                            title="Удалить выбранное"
-                        >
-                            <TrashIcon className="w-4 h-4" />
-                            <span className="d-none d-md-inline">Удалить ({selectedIndices.size})</span>
-                        </button>
-                    ) : (
-                        <div className="d-flex gap-2">
-                            <button
-                                onClick={onSwitchToSearch}
-                                className="btn btn-outline-warning d-flex align-items-center gap-2 px-3"
-                                title="Перейти в поиск"
-                            >
-                                <SearchIcon className="w-5 h-5" />
-                                <span className="d-none d-md-inline">В поиск</span>
-                            </button>
+                <div className="d-flex align-items-center gap-2 pt-1 border-top border-secondary border-opacity-25">
+                    <button
+                        onClick={onSwitchToSearch}
+                        className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-2 fw-bold"
+                    >
+                        <SearchIcon className="w-4 h-4" />
+                        <span>В ПОИСК</span>
+                    </button>
 
-                            <button
-                                onClick={onDownload}
-                                className="btn btn-success d-flex align-items-center gap-2 px-3"
-                                title="Скачать"
-                            >
-                                <SaveIcon className="w-5 h-5" />
-                                <span className="d-none d-md-inline">Скачать</span>
-                            </button>
-                        </div>
-                    )}
+                    <button
+                        onClick={onDownload}
+                        className="btn btn-sm btn-success d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-2 fw-bold"
+                    >
+                        <SaveIcon className="w-4 h-4" />
+                        <span>СКАЧАТЬ</span>
+                    </button>
                 </div>
             </div>
 
@@ -178,7 +177,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
                                     </td>
                                     {row.map((cell: any, colIndex: number) => {
                                         const isColSelected = selectionMode === 'col' && selectedIndices.has(colIndex);
-                                        const isHighlighted = isColSelected; // Row highlight is handled by TR class
+                                        const isHighlighted = isColSelected;
 
                                         return (
                                             <td
