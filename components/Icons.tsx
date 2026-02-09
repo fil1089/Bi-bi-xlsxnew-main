@@ -344,12 +344,12 @@ export const BackArrowIcon: React.FC<{ className?: string, style?: React.CSSProp
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={2.5}
+        strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
         className={className}
         style={style}
     >
-        <path d="m15 18-6-6 6-6" />
+        <path d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 0 1 0 12h-3" />
     </svg>
 );

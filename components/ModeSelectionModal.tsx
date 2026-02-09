@@ -27,14 +27,14 @@ const ModeSelectionModal: React.FC<ModeSelectionModalProps> = ({ fileName, onSel
                         Поиск и выделение
                     </button>
 
-                    {/* Editor Button - Smaller, text changed */}
+                    {/* Editor Button - Red semi-transparent */}
                     <button
                         onClick={() => onSelectMode('edit')}
                         className="btn py-2 d-flex align-items-center justify-content-center transition-all rounded-3 fs-6 fw-bold"
                         style={{
-                            backgroundColor: '#000',
-                            border: '1px solid #334155',
-                            color: '#fff'
+                            backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                            border: '1.2px solid #ef4444',
+                            color: '#ef4444'
                         }}
                     >
                         Удаление строк
