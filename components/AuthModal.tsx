@@ -91,7 +91,14 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, onSignIn, onSig
 
                     {error && (
                         <div className="alert alert-danger small p-2 mb-0" role="alert">
-                            {error}
+                            <div>{error}</div>
+                            {error.includes('сет') && (
+                                <div className="mt-2 text-white-50" style={{ fontSize: '0.75rem' }}>
+                                    💡 Попробуйте: отключить блокировщики рекламы,
+                                    использовать Chrome вместо Safari,
+                                    или подключиться к WiFi
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -100,7 +107,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, onSignIn, onSig
                         className="btn btn-warning fw-bold"
                         disabled={loading}
                     >
-                        {loading ? 'Загрузка...' : (isSignUp ? 'Зарегистрироваться' : 'Войти')}
+                        {loading ? 'Подключение... (пробую несколько раз)' : (isSignUp ? 'Зарегистрироваться' : 'Войти')}
                     </button>
                 </form>
 
