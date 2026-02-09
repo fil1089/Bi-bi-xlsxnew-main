@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { TrashIcon, ChevronLeftIcon, SaveIcon, SearchIcon } from './Icons';
+import { TrashIcon, BackArrowIcon, SaveIcon, SearchIcon } from './Icons';
 
 interface FileEditorProps {
     headers: string[];
@@ -90,7 +90,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
                             className="btn btn-sm btn-outline-secondary d-flex align-items-center justify-content-center p-2"
                             title="Назад"
                         >
-                            <ChevronLeftIcon className="w-5 h-5" />
+                            <BackArrowIcon className="w-5 h-5 text-warning" />
                         </button>
 
                         <div className="d-flex flex-column truncate">
@@ -120,7 +120,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
                         className="btn btn-sm btn-outline-warning d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-2 fw-bold"
                     >
                         <SearchIcon className="w-4 h-4" />
-                        <span>В ПОИСК</span>
+                        <span>В поиск</span>
                     </button>
 
                     <button
@@ -128,7 +128,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
                         className="btn btn-sm btn-success d-flex align-items-center justify-content-center gap-1 flex-grow-1 py-2 fw-bold"
                     >
                         <SaveIcon className="w-4 h-4" />
-                        <span>СКАЧАТЬ</span>
+                        <span>Скачать</span>
                     </button>
                 </div>
             </div>
