@@ -144,10 +144,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
                 <button
                     onClick={onScan}
-                    className="btn btn-dark border-secondary w-100 mb-4 py-3 d-flex align-items-center justify-content-center gap-2 rounded-3 shadow-lg hover:bg-gray-800 transition-colors"
+                    className="btn btn-lg btn-outline-warning w-100 py-3 border-2 border-dashed bg-gray-800 text-warning d-flex flex-column align-items-center justify-content-center gap-2 mb-4 transition-all hover:bg-gray-700 hover:text-warning"
+                    style={{ minHeight: '8rem' }}
                 >
-                    <CameraIcon className="w-5 h-5 text-warning" />
-                    <span className="fw-bold text-white">Сканировать таблицу по фото</span>
+                    <CameraIcon style={{ width: '2rem', height: '2rem' }} />
+                    <span className="fw-bold">Сканировать таблицу по фото</span>
+                    <span className="small opacity-75">Распознавание печатного текста</span>
                 </button>
 
                 {isAuthenticated && userFiles.length > 0 && (
