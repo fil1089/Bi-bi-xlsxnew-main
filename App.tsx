@@ -2,6 +2,8 @@ import React, { useState, useCallback, useMemo, useRef, useLayoutEffect, useEffe
 import FileUpload from './components/FileUpload';
 import DataTable from './components/DataTable';
 import NoteEditor from './components/NoteEditor';
+import FileEditor from './components/FileEditor';
+import ModeSelectionModal from './components/ModeSelectionModal';
 import NumericKeyboard from './components/NumericKeyboard';
 import SearchBar from './components/HighlightMenu'; // Using HighlightMenu file for the new SearchBar component
 import { ChevronDownIcon, PlusIcon, SaveIcon, HighlightIcon, DocumentTextIcon, UserIcon, CloudIcon } from './components/Icons';
@@ -32,6 +34,19 @@ const App: React.FC = () => {
     const [fileName, setFileName] = useState<string | null>(null);
     const [headers, setHeaders] = useState<string[]>([]);
     const [sheetData, setSheetData] = useState<SheetData>([]);
+
+    // New state for mode selection
+    const [appMode, setAppMode] = useState<'home' | 'search' | 'editor'>('home');
+    const [pendingFile, setPendingFile] = useState<{
+        headers: string[];
+        data: SheetData;
+        fileName: string;
+        worksheet?: any;
+        notes?: CellNotes;
+        highlightedCells?: HighlightedCells;
+        columnWidths?: number[];
+    } | null>(null);
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [originalWorksheet, setOriginalWorksheet] = useState<any>(null);
@@ -139,22 +154,17 @@ const App: React.FC = () => {
     const handleFileProcessed = useCallback(async (newHeaders: string[], newData: SheetData, newFileName: string, worksheet: any) => {
         const initialNotesData = readInitialNotes(worksheet);
         const initialHighlightsData = readInitialHighlights(worksheet);
+        const initialWidthsData = readInitialWidths(worksheet, newHeaders, newData);
 
-        setHeaders(newHeaders);
-        setSheetData(newData);
-        setFileName(newFileName);
-        setOriginalWorksheet(worksheet);
-        setSearchQuery('');
-        setHighlightedCells(initialHighlightsData);
-        setHighlightedHeaderIndices(new Set());
-        setError('');
-        setFilter('all');
-        setColumnWidths(readInitialWidths(worksheet, newHeaders, newData));
-        setNotes(initialNotesData);
-        setNoteEditorState({ visible: false });
-        setKeyboardVisible(false);
-        setHighlightMode(false);
-        setSelectedCell(null);
+        setPendingFile({
+            headers: newHeaders,
+            data: newData,
+            fileName: newFileName,
+            worksheet: worksheet,
+            notes: initialNotesData,
+            highlightedCells: initialHighlightsData,
+            columnWidths: initialWidthsData
+        });
 
         // Refresh file list
         if (user && supabase) {
@@ -168,17 +178,120 @@ const App: React.FC = () => {
     }, [user]);
 
     const handleSelectFile = (file: any) => {
-        setHeaders(file.headers);
-        setSheetData(file.sheet_data);
-        setFileName(file.file_name);
-        setHighlightedCells(file.highlighted_cells || {});
-        setNotes(file.notes || {});
-        setColumnWidths(calculateAutoWidths(file.headers, file.sheet_data));
-        setSearchQuery('');
-        setFilter('all');
-        setKeyboardVisible(false);
-        setSelectedCell(null);
+        setPendingFile({
+            headers: file.headers,
+            data: file.sheet_data,
+            fileName: file.file_name,
+            notes: file.notes || {},
+            highlightedCells: file.highlighted_cells || {},
+            columnWidths: calculateAutoWidths(file.headers, file.sheet_data)
+        });
     };
+
+    const handleModeSelect = (mode: 'search' | 'edit') => {
+        if (!pendingFile) return;
+
+        setHeaders(pendingFile.headers || []);
+        setSheetData(pendingFile.data || []);
+        setFileName(pendingFile.fileName);
+
+        setNotes(pendingFile.notes || {});
+        setHighlightedCells(pendingFile.highlightedCells || {});
+
+        if (pendingFile.columnWidths && pendingFile.columnWidths.length > 0) {
+            setColumnWidths(pendingFile.columnWidths);
+        } else if (pendingFile.worksheet) {
+            setColumnWidths(readInitialWidths(pendingFile.worksheet, pendingFile.headers, pendingFile.data));
+        } else {
+            setColumnWidths(calculateAutoWidths(pendingFile.headers, pendingFile.data));
+        }
+
+        if (pendingFile.worksheet) {
+            setOriginalWorksheet(pendingFile.worksheet);
+        } else {
+            setOriginalWorksheet(null);
+        }
+
+        setSearchQuery('');
+        setHighlightedHeaderIndices(new Set());
+        setError('');
+        setFilter('all');
+        setNoteEditorState({ visible: false });
+        setKeyboardVisible(false);
+        setHighlightMode(false);
+
+        setAppMode(mode === 'search' ? 'search' : 'editor');
+        setPendingFile(null);
+    };
+
+    const handleDeleteRow = useCallback((rowIndex: number) => {
+        setSheetData(prev => {
+            const newData = [...prev];
+            newData.splice(rowIndex, 1);
+            return newData;
+        });
+
+        setNotes(prev => {
+            const newNotes: CellNotes = {};
+            Object.keys(prev).forEach(key => {
+                const [r, c] = key.split('-').map(Number);
+                if (r < rowIndex) newNotes[key] = prev[key];
+                else if (r > rowIndex) newNotes[`${r - 1}-${c}`] = prev[key];
+            });
+            return newNotes;
+        });
+
+        setHighlightedCells(prev => {
+            const newHighlights: HighlightedCells = {};
+            Object.keys(prev).forEach(key => {
+                const [r, c] = key.split('-').map(Number);
+                if (r < rowIndex) newHighlights[key] = prev[key];
+                else if (r > rowIndex) newHighlights[`${r - 1}-${c}`] = prev[key];
+            });
+            return newHighlights;
+        });
+    }, []);
+
+    const handleDeleteColumn = useCallback((colIndex: number) => {
+        setHeaders(prev => {
+            const newHeaders = [...prev];
+            newHeaders.splice(colIndex, 1);
+            return newHeaders;
+        });
+        setSheetData(prev => {
+            return prev.map(row => {
+                if (!row) return row;
+                const newRow = [...row];
+                newRow.splice(colIndex, 1);
+                return newRow;
+            });
+        });
+        setColumnWidths(prev => {
+            const newWidths = [...prev];
+            newWidths.splice(colIndex, 1);
+            return newWidths;
+        });
+
+        setNotes(prev => {
+            const newNotes: CellNotes = {};
+            Object.keys(prev).forEach(key => {
+                const [r, c] = key.split('-').map(Number);
+                if (c < colIndex) newNotes[key] = prev[key];
+                else if (c > colIndex) newNotes[`${r}-${c - 1}`] = prev[key];
+            });
+            return newNotes;
+        });
+
+        setHighlightedCells(prev => {
+            const newHighlights: HighlightedCells = {};
+            Object.keys(prev).forEach(key => {
+                const [r, c] = key.split('-').map(Number);
+                if (c < colIndex) newHighlights[key] = prev[key];
+                else if (c > colIndex) newHighlights[`${r}-${c - 1}`] = prev[key];
+            });
+            return newHighlights;
+        });
+    }, []);
 
     const filteredData = useMemo(() => {
         const sourceData = sheetData.map((row, index) => ({ row, originalIndex: index }));
@@ -473,7 +586,17 @@ const App: React.FC = () => {
                         lastAddedSubheaderIndex = subheaderIndex;
                     }
 
-                    noteWorksheet.addRow(sheetData[rowIndex].map(c => c ?? null));
+                    const newRow = noteWorksheet.addRow(sheetData[rowIndex].map(c => c ?? null));
+
+                    // Add notes to the new row
+                    newRow.eachCell((cell: any, colNumber: number) => {
+                        const colIndex = colNumber - 1;
+                        const noteKey = `${rowIndex}-${colIndex}`;
+                        const note = notes[noteKey];
+                        if (note) {
+                            cell.note = note;
+                        }
+                    });
                 });
 
                 if (headers.length > 0) {
@@ -673,6 +796,20 @@ const App: React.FC = () => {
             );
         }
 
+        if (appMode === 'editor' && fileName && sheetData.length > 0) {
+            return (
+                <FileEditor
+                    headers={headers}
+                    data={sheetData}
+                    columnWidths={columnWidths}
+                    onDeleteRow={handleDeleteRow}
+                    onDeleteColumn={handleDeleteColumn}
+                    onBack={resetApp}
+                    fileName={fileName}
+                />
+            );
+        }
+
         if (fileName && sheetData.length > 0) {
             return (
                 <div className="d-flex flex-column h-100 w-100">
@@ -717,6 +854,13 @@ const App: React.FC = () => {
 
     return (
         <div className="d-flex flex-column position-relative" style={{ height: '100vh', overflow: 'hidden' }}>
+            {pendingFile && (
+                <ModeSelectionModal
+                    fileName={pendingFile.fileName}
+                    onSelectMode={handleModeSelect}
+                    onCancel={() => setPendingFile(null)}
+                />
+            )}
             {loading && (
                 <div className="position-fixed inset-0 d-flex align-items-center justify-content-center bg-dark bg-opacity-75 z-1050">
                     <div className="spinner-border text-warning" role="status">
@@ -732,7 +876,7 @@ const App: React.FC = () => {
             )}
 
             {renderContent()}
-            {noteEditorState.visible && (
+            {appMode === 'search' && noteEditorState.visible && (
                 <NoteEditor
                     note={notes[`${noteEditorState.rowIndex}-${noteEditorState.colIndex}`] || ''}
                     onSave={handleSaveNote}
@@ -758,7 +902,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
-            {fileName && (
+            {appMode === 'search' && fileName && (
                 <SearchBar
                     searchQuery={searchQuery}
                     onClear={handleClearSearch}

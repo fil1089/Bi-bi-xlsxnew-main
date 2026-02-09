@@ -130,13 +130,16 @@ export const useAutoSave = (
             console.log('AutoSave: Success');
             onSavingError?.(null); // Explicitly clear error on success
         } catch (err: any) {
-            console.error('AutoSave: Final catch error:', err);
+            console.error('AutoSave: Final catch error FULL DETAILS:', JSON.stringify(err, null, 2));
+            console.error('AutoSave: Error message:', err.message);
+            console.error('AutoSave: Error stack:', err.stack);
+
             // More user-friendly error messages
-            let errorMessage = 'Ошибка сети';
+            let errorMessage = 'Ошибка сохранения';
             if (err instanceof TypeError && err.message.includes('Load failed')) {
                 errorMessage = 'Проблема с сетью. Проверьте подключение к интернету.';
             } else if (err.message) {
-                errorMessage = err.message;
+                errorMessage = `Ошибка: ${err.message}`;
             }
             onSavingError?.(errorMessage);
 
