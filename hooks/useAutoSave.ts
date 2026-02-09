@@ -98,9 +98,16 @@ export const useAutoSave = (
 
             lastSavedRef.current = currentDataString;
             console.log('AutoSave: Success');
+            onSavingError?.(null); // Explicitly clear error on success
         } catch (err: any) {
             console.error('AutoSave: Final catch error:', err);
-            onSavingError?.(err.message || 'Ошибка сети');
+            const errorMessage = err.message || 'Ошибка сети';
+            onSavingError?.(errorMessage);
+
+            // If it's a session error, we might want to log it specifically
+            if (errorMessage.includes('session') || errorMessage.includes('JWT')) {
+                console.warn('AutoSave: Auth session issue detected');
+            }
         } finally {
             isSavingRef.current = false;
             onSavingChange?.(false);

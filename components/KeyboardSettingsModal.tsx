@@ -1,6 +1,8 @@
 
 import React from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+// @ts-ignore - fix for React 19 type conflict
+const DraggableAny = Draggable as any;
 // Fix: Correctly import KeyboardButtonConfig type.
 import type { KeyboardButtonConfig } from './NumericKeyboard';
 // Fix: Import newly created DragHandleIcon.
@@ -42,8 +44,8 @@ const KeyboardSettingsModal: React.FC<KeyboardSettingsModalProps> = ({ layout, o
                         {(provided) => (
                             <div {...provided.droppableProps} ref={provided.innerRef} className="overflow-y-auto pe-2" style={{ maxHeight: '20rem' }}>
                                 {layout.map((btn, index) => (
-                                    <Draggable key={btn.id} draggableId={btn.id} index={index}>
-                                        {(provided, snapshot) => (
+                                    <DraggableAny key={btn.id} draggableId={btn.id} index={index}>
+                                        {(provided: any, snapshot: any) => (
                                             <div ref={provided.innerRef}
                                                 {...provided.draggableProps}
                                                 {...provided.dragHandleProps}
@@ -56,7 +58,7 @@ const KeyboardSettingsModal: React.FC<KeyboardSettingsModalProps> = ({ layout, o
                                                 <span className="text-gray-200">{btn.label}</span>
                                             </div>
                                         )}
-                                    </Draggable>
+                                    </DraggableAny>
                                 ))}
                                 {provided.placeholder}
                             </div>
@@ -73,7 +75,7 @@ const KeyboardSettingsModal: React.FC<KeyboardSettingsModalProps> = ({ layout, o
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 

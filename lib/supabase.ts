@@ -5,7 +5,14 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Only create client if credentials are provided
 export const supabase: SupabaseClient | null = (supabaseUrl && supabaseAnonKey)
-    ? createClient(supabaseUrl, supabaseAnonKey)
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storageKey: 'bibi-auth-token',
+        }
+    })
     : null;
 
 export const isAuthEnabled = !!supabase;

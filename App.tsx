@@ -734,9 +734,12 @@ const App: React.FC = () => {
             )}
             {fileName && (isSaving || saveError) && (
                 <div className="position-fixed top-0 end-0 p-2 z-1050 pointer-events-none">
-                    <div className={`d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-secondary pointer-events-auto ${saveError ? 'text-danger' : 'text-warning animate-pulse'}`}>
+                    <div
+                        onClick={() => saveError && setSaveError(null)}
+                        className={`d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-secondary pointer-events-auto ${saveError ? 'text-danger cursor-pointer' : 'text-warning animate-pulse'}`}
+                    >
                         <CloudIcon style={{ width: '1rem', height: '1rem' }} />
-                        <span>{saveError ? `Ошибка сохранения: ${saveError}` : 'Сохранение...'}</span>
+                        <span>{saveError ? `Ошибка сохранения: ${saveError} (нажмите, чтобы скрыть)` : 'Сохранение...'}</span>
                     </div>
                 </div>
             )}
