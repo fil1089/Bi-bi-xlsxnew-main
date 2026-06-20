@@ -15,6 +15,9 @@ dist-ssr
 # Git push token (НЕ коммитить — содержит секрет)
 .git-token
 
+# Тестовые xlsx-файлы с реальными данными (не коммитить)
+*.xlsx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

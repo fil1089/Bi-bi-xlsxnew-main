@@ -84,6 +84,9 @@ const App: React.FC = () => {
     const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
     const [scrollToRowIndex, setScrollToRowIndex] = useState<number | null>(null);
     const [selectedCell, setSelectedCell] = useState<{ row: number, col: number } | null>(null);
+    // Последняя тапнутая ячейка — обновляется и в режиме выбора, и в режиме
+    // подсветки. По ней работает кнопка заметки (чтобы она была активна всегда).
+    const [lastTappedCell, setLastTappedCell] = useState<{ row: number, col: number } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [userFiles, setUserFiles] = useState<any[]>([]);
@@ -237,6 +240,8 @@ const App: React.FC = () => {
         setNoteEditorState({ visible: false });
         setKeyboardVisible(false);
         setHighlightMode(false);
+        setSelectedCell(null);
+        setLastTappedCell(null);
 
         setAppMode(mode === 'search' ? 'search' : 'editor');
         setPendingFile(null);
@@ -400,6 +405,9 @@ const App: React.FC = () => {
 
     const handleCellClick = (rowIndex: number, colIndex: number) => {
         const cellKey = `${rowIndex}-${colIndex}`;
+        // Запоминаем тапнутую ячейку и в режиме подсветки — чтобы кнопка
+        // заметки работала и здесь.
+        setLastTappedCell({ row: rowIndex, col: colIndex });
 
         setHighlightedCells(prev => {
             const newHighlights = { ...prev };
@@ -445,12 +453,16 @@ const App: React.FC = () => {
         } else {
             setSelectedCell({ row: rowIndex, col: colIndex });
         }
+        setLastTappedCell({ row: rowIndex, col: colIndex });
         setKeyboardVisible(true);
     }, [selectedCell]);
 
     const handleRequestNoteEditor = () => {
-        if (selectedCell) {
-            setNoteEditorState({ visible: true, rowIndex: selectedCell.row, colIndex: selectedCell.col });
+        // Используем последнюю тапнутую ячейку — работает и в режиме подсветки,
+        // где selectedCell не выставляется.
+        const target = selectedCell ?? lastTappedCell;
+        if (target) {
+            setNoteEditorState({ visible: true, rowIndex: target.row, colIndex: target.col });
         }
     };
 
@@ -759,6 +771,7 @@ const App: React.FC = () => {
         origRowCountRef.current = 0;
         origColCountRef.current = 0;
         setSelectedCell(null);
+        setLastTappedCell(null);
     };
 
     const handleDeleteFile = async () => {
@@ -955,7 +968,7 @@ const App: React.FC = () => {
                                 setSelectedCell(null);
                             }}
                             onAddNote={handleRequestNoteEditor}
-                            isCellSelected={!!selectedCell}
+                            isCellSelected={!!(selectedCell ?? lastTappedCell)}
                             onReset={resetApp}
                             onSave={handleSaveFile}
                         />

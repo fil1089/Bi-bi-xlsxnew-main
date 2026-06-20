@@ -80,7 +80,7 @@ const FileEditor: React.FC<FileEditorProps> = ({
     };
 
     return (
-        <div className="d-flex flex-column h-100 bg-black text-white">
+        <div className="d-flex flex-column flex-grow-1 h-100 w-100 bg-black text-white" style={{ minHeight: 0 }}>
             {/* Toolbar */}
             <div className="d-flex flex-column p-2 border-bottom border-secondary bg-gray-900 shadow-sm z-20">
                 <div className="d-flex align-items-center justify-content-between mb-2">
@@ -133,8 +133,8 @@ const FileEditor: React.FC<FileEditorProps> = ({
             </div>
 
             {/* Table Container */}
-            <div className="flex-grow-1 overflow-auto bg-gray-900 custom-scrollbar">
-                <table className="w-100 border-collapse bg-black" style={{ tableLayout: 'fixed' }}>
+            <div className="flex-grow-1 overflow-auto bg-gray-900 custom-scrollbar" style={{ minHeight: 0 }}>
+                <table className="w-100 border-collapse bg-black" style={{ tableLayout: columnWidths.length > 0 ? 'fixed' : 'auto' }}>
                     <colgroup>
                         <col style={{ width: '50px' }} /> {/* Row numbers column */}
                         {columnWidths.map((width, index) => (

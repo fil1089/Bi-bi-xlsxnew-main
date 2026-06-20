@@ -8,6 +8,7 @@ import {
     readInitialHighlights,
     readInitialWidths,
 } from './utils';
+import { repairXlsx } from './xlsxRepair';
 import { SheetData } from '../types';
 
 // exceljs/dist — UMD-бандл; в зависимости от интеропа Vite default может
@@ -18,8 +19,22 @@ self.onmessage = async (e: MessageEvent) => {
     try {
         const { buffer } = e.data as { buffer: ArrayBuffer };
 
+        // Буфер, который вернём главному потоку для экспорта поверх оригинала.
+        // При ремонте он заменяется на починенный — иначе экспорт упадёт так же.
+        let effectiveBuffer = buffer;
+
         const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
+        try {
+            await workbook.xlsx.load(effectiveBuffer);
+        } catch (loadErr) {
+            // Типовой битый файл из 1С — пробуем починить и загрузить ещё раз.
+            try {
+                effectiveBuffer = repairXlsx(buffer);
+                await workbook.xlsx.load(effectiveBuffer);
+            } catch {
+                throw loadErr; // ремонт не помог — отдаём исходную ошибку
+            }
+        }
 
         const worksheet = workbook.worksheets[0];
         if (!worksheet) {
@@ -49,12 +64,12 @@ self.onmessage = async (e: MessageEvent) => {
         const highlightedCells = readInitialHighlights(worksheet);
         const columnWidths = readInitialWidths(worksheet, headers, data);
 
-        // Возвращаем исходный буфер обратно (transferable), чтобы главный поток
-        // сохранил оригинальные байты для экспорта поверх оригинала — без
+        // Возвращаем (возможно, починенный) буфер обратно (transferable), чтобы
+        // главный поток сохранил байты для экспорта поверх оригинала — без
         // удвоения памяти на копию.
         (self as any).postMessage(
-            { headers, data, notes, highlightedCells, columnWidths, buffer },
-            [buffer],
+            { headers, data, notes, highlightedCells, columnWidths, buffer: effectiveBuffer },
+            [effectiveBuffer],
         );
     } catch (err) {
         (self as any).postMessage({ error: String(err) });
