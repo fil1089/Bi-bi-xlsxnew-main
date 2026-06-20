@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { UploadIcon, TrashIcon, DocumentTextIcon } from './Icons';
 import { BiBiLogo } from './BiBiLogo';
-import { isAuthEnabled } from '../lib/supabase';
+import { isAuthEnabled } from '../lib/api';
 import { normalizeCellValue } from '../lib/utils';
 import { SheetData } from '../types';
 

@@ -9,7 +9,7 @@ import SearchBar from './components/HighlightMenu'; // Using HighlightMenu file 
 import { ChevronDownIcon, PlusIcon, SaveIcon, HighlightIcon, DocumentTextIcon, UserIcon, CloudIcon } from './components/Icons';
 import AuthModal from './components/AuthModal';
 import { BiBiLogo } from './components/BiBiLogo';
-import { supabase, isAuthEnabled } from './lib/supabase';
+import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
 import { calculateAutoWidths, readInitialWidths, readInitialHighlights, readInitialNotes } from './lib/utils';
@@ -96,30 +96,22 @@ const App: React.FC = () => {
     // Fetch user files on login
     useEffect(() => {
         const fetchUserFiles = async (retryCount = 0) => {
-            if (!user || !supabase || initialFetchAttempted.current) return;
+            if (!user || initialFetchAttempted.current) return;
 
             initialFetchAttempted.current = true;
             try {
-                const { data, error } = await supabase
-                    .from('files')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('updated_at', { ascending: false });
+                const data = await api.listFiles();
 
-                if (error) throw error;
-
-                if (data) {
-                    setUserFiles(data);
-                    // Automatically load the first one if we don't have a filename yet
-                    if (data.length > 0 && !fileName) {
-                        const lastFile = data[0];
-                        setHeaders(lastFile.headers);
-                        setSheetData(lastFile.sheet_data);
-                        setFileName(lastFile.file_name);
-                        setHighlightedCells(lastFile.highlighted_cells || {});
-                        setNotes(lastFile.notes || {});
-                        setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
-                    }
+                setUserFiles(data);
+                // Automatically load the first one if we don't have a filename yet
+                if (data.length > 0 && !fileName) {
+                    const lastFile = data[0];
+                    setHeaders(lastFile.headers);
+                    setSheetData(lastFile.sheet_data);
+                    setFileName(lastFile.file_name);
+                    setHighlightedCells(lastFile.highlighted_cells || {});
+                    setNotes(lastFile.notes || {});
+                    setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
                 }
             } catch (err: any) {
                 console.error('Error fetching user files:', err);
@@ -174,13 +166,13 @@ const App: React.FC = () => {
         });
 
         // Refresh file list
-        if (user && supabase) {
-            const { data } = await supabase
-                .from('files')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('updated_at', { ascending: false });
-            if (data) setUserFiles(data);
+        if (user) {
+            try {
+                const data = await api.listFiles();
+                setUserFiles(data);
+            } catch (err) {
+                console.error('Error refreshing file list:', err);
+            }
         }
     }, [user]);
 
@@ -708,25 +700,15 @@ const App: React.FC = () => {
 
         try {
             setLoading(true);
-            const { error: deleteError } = await supabase
-                .from('files')
-                .delete()
-                .eq('user_id', user.id)
-                .eq('file_name', fileName);
-
-            if (deleteError) throw deleteError;
+            await api.deleteFile(fileName);
 
             console.log('File deleted successfully');
             resetApp();
 
             // Refresh list
-            if (user && supabase) {
-                const { data } = await supabase
-                    .from('files')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .order('updated_at', { ascending: false });
-                if (data) setUserFiles(data);
+            if (user) {
+                const data = await api.listFiles();
+                setUserFiles(data);
             }
         } catch (err: any) {
             console.error('Error deleting file:', err);
@@ -740,21 +722,11 @@ const App: React.FC = () => {
         if (!user) return;
         try {
             setLoading(true);
-            const { error: deleteError } = await supabase
-                .from('files')
-                .delete()
-                .eq('user_id', user.id)
-                .eq('file_name', name);
-
-            if (deleteError) throw deleteError;
+            await api.deleteFile(name);
 
             // Refresh list
-            const { data } = await supabase
-                .from('files')
-                .select('*')
-                .eq('user_id', user.id)
-                .order('updated_at', { ascending: false });
-            if (data) setUserFiles(data);
+            const data = await api.listFiles();
+            setUserFiles(data);
 
             if (fileName === name) {
                 resetApp();
