@@ -13,17 +13,22 @@ interface AutoSaveData {
 
 export const useAutoSave = (
     data: AutoSaveData | null,
-    delay: number = 2000,
+    delay: number = 5000,
     onSavingChange?: (saving: boolean) => void,
     onSavingError?: (error: string | null) => void
 ) => {
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastSavedRef = useRef<string>('');
     const isSavingRef = useRef<boolean>(false);
+    // Последние данные, ожидающие сохранения. Нужны, чтобы перепланировать
+    // попытку, если в момент срабатывания таймера предыдущее сохранение ещё идёт.
+    const pendingDataRef = useRef<AutoSaveData | null>(null);
 
-    const save = useCallback(async (saveData: AutoSaveData) => {
+    const save = useCallback(async (saveData: AutoSaveData, isRetry = false) => {
+        // Если сохранение уже идёт — не теряем цикл, а запоминаем данные и
+        // перепланируем (сработает после завершения текущего запроса).
         if (isSavingRef.current) {
-            console.log('AutoSave: Save already in progress, skipping this cycle.');
+            pendingDataRef.current = saveData;
             return;
         }
 
@@ -51,17 +56,33 @@ export const useAutoSave = (
             lastSavedRef.current = currentDataString;
             onSavingError?.(null);
         } catch (err: any) {
-            console.error('AutoSave: error:', err);
-            let errorMessage = 'Ошибка сохранения';
+            // Сессия истекла — показываем сразу, ретрай не поможет.
             if (err.status === 401) {
-                errorMessage = 'Сессия истекла. Войдите снова.';
-            } else if (err.message) {
-                errorMessage = `Ошибка: ${err.message}`;
+                onSavingError?.('Сессия истекла. Войдите снова.');
+            } else if (!isRetry) {
+                // Разовый сбой/гонка — один тихий ретрай через 3 с, не пугаем
+                // пользователя миганием ошибки.
+                console.warn('AutoSave: первая попытка не удалась, тихий ретрай через 3с', err);
+                isSavingRef.current = false;
+                onSavingChange?.(false);
+                setTimeout(() => save(saveData, true), 3000);
+                return;
+            } else {
+                console.error('AutoSave: ошибка после ретрая:', err);
+                onSavingError?.(err.message ? `Ошибка: ${err.message}` : 'Ошибка сохранения');
             }
-            onSavingError?.(errorMessage);
         } finally {
             isSavingRef.current = false;
             onSavingChange?.(false);
+
+            // Если за время сохранения накопились новые данные — сохранить их.
+            const pending = pendingDataRef.current;
+            if (pending && JSON.stringify(pending) !== lastSavedRef.current) {
+                pendingDataRef.current = null;
+                setTimeout(() => save(pending), 0);
+            } else {
+                pendingDataRef.current = null;
+            }
         }
     }, [onSavingChange, onSavingError]);
 

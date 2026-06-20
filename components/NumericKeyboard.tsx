@@ -21,6 +21,7 @@ interface NumericKeyboardProps {
     isCellSelected: boolean;
     onReset: () => void;
     onSave: () => void;
+    onFillEmptyRed: () => void;
 }
 
 const KeyButton: React.FC<{
@@ -54,6 +55,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         isCellSelected,
         onReset,
         onSave,
+        onFillEmptyRed,
     } = props;
 
     const buttons = [
@@ -121,6 +123,17 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
                     <div className="col-3">
                         <KeyButton onClick={onAddNote} disabled={!isCellSelected} className="bg-gray-700" title="Добавить/изменить заметку">
                             <DocumentTextIcon style={{ width: '1.5rem', height: '1.5rem' }} />
+                        </KeyButton>
+                    </div>
+                </div>
+                <div className="row g-2 mt-0">
+                    <div className="col-12">
+                        <KeyButton
+                            onClick={onFillEmptyRed}
+                            className="bg-red-800 text-white"
+                            title="Перекрасить все незакрашенные ячейки в красный"
+                        >
+                            <span style={{ fontSize: '0.9rem' }}>Незакрашенные → красный</span>
                         </KeyButton>
                     </div>
                 </div>

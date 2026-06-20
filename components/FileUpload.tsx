@@ -9,6 +9,10 @@ export interface ProcessedFileMeta {
     highlightedCells: HighlightedCells;
     columnWidths: number[];
     buffer: ArrayBuffer;
+    // Положение заголовков в исходном файле (1-based Excel-строка) и число
+    // ведущих пустых столбцов — нужны для корректного экспорта поверх оригинала.
+    headerRowNumber: number;
+    colOffset: number;
 }
 
 interface FileUploadProps {
@@ -76,6 +80,8 @@ const FileUpload: React.FC<FileUploadProps> = ({
                 highlightedCells: result.highlightedCells,
                 columnWidths: result.columnWidths,
                 buffer: result.buffer,
+                headerRowNumber: result.headerRowNumber,
+                colOffset: result.colOffset,
             });
         } catch (err) {
             console.error('Ошибка загрузки:', err);

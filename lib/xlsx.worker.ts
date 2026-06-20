@@ -7,6 +7,7 @@ import {
     readInitialNotes,
     readInitialHighlights,
     readInitialWidths,
+    detectHeaderPosition,
 } from './utils';
 import { repairXlsx } from './xlsxRepair';
 import { SheetData } from '../types';
@@ -42,33 +43,51 @@ self.onmessage = async (e: MessageEvent) => {
             return;
         }
 
-        // Заголовки — первая строка.
-        const headers: string[] = [];
-        const headerRow = worksheet.getRow(1);
-        headerRow.eachCell({ includeEmpty: true }, (cell: any) => {
-            headers.push(String(cell.value ?? ''));
-        });
+        // У файлов 1С заголовки не на первой строке (выше — название бланка,
+        // магазин), данные могут начинаться со столбца B. Определяем положение.
+        const { headerRowNumber, colOffset } = detectHeaderPosition(worksheet);
+        const maxCol = Math.max(1, worksheet.columnCount || 1);
 
-        // Данные — со второй строки.
+        // Заголовки — со строки headerRowNumber, начиная со столбца colOffset+1.
+        const headers: string[] = [];
+        const headerRow = worksheet.getRow(headerRowNumber);
+        for (let j = colOffset + 1; j <= maxCol; j++) {
+            headers.push(String(headerRow.getCell(j).value ?? ''));
+        }
+        // Обрезаем хвост полностью пустых заголовков справа.
+        while (headers.length > 0 && headers[headers.length - 1].trim() === '') {
+            headers.pop();
+        }
+
+        // Данные — со строки сразу после заголовков.
         const data: SheetData = [];
-        for (let i = 2; i <= worksheet.rowCount; i++) {
+        for (let i = headerRowNumber + 1; i <= worksheet.rowCount; i++) {
             const row = worksheet.getRow(i);
             const rowData: (string | number | boolean | null)[] = [];
-            for (let j = 1; j <= headers.length; j++) {
-                rowData.push(normalizeCellValue(row.getCell(j).value));
+            for (let j = 0; j < headers.length; j++) {
+                rowData.push(normalizeCellValue(row.getCell(colOffset + 1 + j).value));
             }
             data.push(rowData);
         }
 
-        const notes = readInitialNotes(worksheet);
-        const highlightedCells = readInitialHighlights(worksheet);
-        const columnWidths = readInitialWidths(worksheet, headers, data);
+        const notes = readInitialNotes(worksheet, headerRowNumber, colOffset);
+        const highlightedCells = readInitialHighlights(worksheet, headerRowNumber, colOffset);
+        const columnWidths = readInitialWidths(worksheet, headers, data, colOffset);
 
         // Возвращаем (возможно, починенный) буфер обратно (transferable), чтобы
         // главный поток сохранил байты для экспорта поверх оригинала — без
-        // удвоения памяти на копию.
+        // удвоения памяти на копию. headerRowNumber/colOffset нужны для экспорта.
         (self as any).postMessage(
-            { headers, data, notes, highlightedCells, columnWidths, buffer: effectiveBuffer },
+            {
+                headers,
+                data,
+                notes,
+                highlightedCells,
+                columnWidths,
+                headerRowNumber,
+                colOffset,
+                buffer: effectiveBuffer,
+            },
             [effectiveBuffer],
         );
     } catch (err) {

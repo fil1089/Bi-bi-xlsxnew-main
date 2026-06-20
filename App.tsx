@@ -48,6 +48,8 @@ const App: React.FC = () => {
         notes?: CellNotes;
         highlightedCells?: HighlightedCells;
         columnWidths?: number[];
+        headerRowNumber?: number;
+        colOffset?: number;
     } | null>(null);
 
     const [loading, setLoading] = useState(false);
@@ -62,6 +64,11 @@ const App: React.FC = () => {
     const colIndexMapRef = useRef<number[]>([]);
     const origRowCountRef = useRef<number>(0);
     const origColCountRef = useRef<number>(0);
+    // Положение заголовков в исходном файле (для 1С — не строка 1, столбцы могут
+    // начинаться не с A). Excel-строка = индекс_данных + headerRowNumber + 1,
+    // Excel-столбец = индекс_столбца + 1 + colOffset.
+    const headerRowNumberRef = useRef<number>(1);
+    const colOffsetRef = useRef<number>(0);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -106,7 +113,7 @@ const App: React.FC = () => {
         };
     }, [user, fileName, sheetData, headers, notes, highlightedCells]);
 
-    useAutoSave(autoSaveData, 2000, setIsSaving, setSaveError);
+    useAutoSave(autoSaveData, 5000, setIsSaving, setSaveError);
 
     // Fetch user files on login
     useEffect(() => {
@@ -133,6 +140,8 @@ const App: React.FC = () => {
                     colIndexMapRef.current = [];
                     origRowCountRef.current = 0;
                     origColCountRef.current = 0;
+                    headerRowNumberRef.current = 1;
+                    colOffsetRef.current = 0;
                     // Открываем в режиме «поиск» — иначе панель поиска с клавиатурой
                     // не отрендерится (она завязана на appMode === 'search').
                     setAppMode('search');
@@ -182,7 +191,9 @@ const App: React.FC = () => {
             buffer: meta.buffer,
             notes: meta.notes,
             highlightedCells: meta.highlightedCells,
-            columnWidths: meta.columnWidths
+            columnWidths: meta.columnWidths,
+            headerRowNumber: meta.headerRowNumber,
+            colOffset: meta.colOffset,
         });
 
         // Refresh file list
@@ -232,6 +243,8 @@ const App: React.FC = () => {
         origColCountRef.current = newHeaders.length;
         rowIndexMapRef.current = newData.map((_, i) => i);
         colIndexMapRef.current = newHeaders.map((_, i) => i);
+        headerRowNumberRef.current = pendingFile.headerRowNumber ?? 1;
+        colOffsetRef.current = pendingFile.colOffset ?? 0;
 
         setSearchQuery('');
         setHighlightedHeaderIndices(new Set());
@@ -447,6 +460,40 @@ const App: React.FC = () => {
         });
     };
 
+    // Перекрасить все НЕЗАКРАШЕННЫЕ ячейки видимых строк в красный.
+    // «Незакрашенные» = без записи в highlightedCells. Сабхедеры пропускаем.
+    const handleFillEmptyRed = () => {
+        if (sheetData.length === 0) return;
+        if (!window.confirm('Перекрасить все незакрашенные ячейки видимых строк в красный?')) return;
+
+        setHighlightedCells(prev => {
+            const newHighlights = { ...prev };
+
+            filteredData.forEach(({ row, originalIndex }) => {
+                // Пропускаем строки-заголовки ревизионных групп.
+                const isSubheader = String(row[0] ?? '').trim().startsWith(REVISION_GROUP_PREFIX);
+                if (isSubheader) return;
+
+                let rowGotRed = false;
+                for (let colIndex = 0; colIndex < row.length; colIndex++) {
+                    const key = `${originalIndex}-${colIndex}`;
+                    if (!newHighlights[key]) {
+                        newHighlights[key] = 'red';
+                        rowGotRed = true;
+                    }
+                }
+
+                // То же правило, что в handleCellClick: если в строке появился
+                // красный — красим ячейку столбца ревизионной группы этой строки.
+                if (rowGotRed && revisionGroupColIndex !== -1) {
+                    newHighlights[`${originalIndex}-${revisionGroupColIndex}`] = 'red';
+                }
+            });
+
+            return newHighlights;
+        });
+    };
+
     const handleCellSelect = useCallback((rowIndex: number, colIndex: number) => {
         if (selectedCell && selectedCell.row === rowIndex && selectedCell.col === colIndex) {
             setSelectedCell(null);
@@ -501,22 +548,29 @@ const App: React.FC = () => {
                 await workbook.xlsx.load(originalBufferRef.current);
                 const worksheet = workbook.worksheets[0];
 
+                const headerRowNum = headerRowNumberRef.current; // 1-based строка заголовков
+                const colOff = colOffsetRef.current;             // ведущие пустые столбцы
+                // Индекс данных (0-based) → Excel-строка = idx + headerRowNum + 1.
+                // Индекс столбца (0-based) → Excel-столбец = idx + 1 + colOff.
+                const dataRowExcel = (idx: number) => idx + headerRowNum + 1;
+                const dataColExcel = (idx: number) => idx + 1 + colOff;
+
                 // 1. Вырезаем удалённые столбцы (от старших индексов к младшим).
                 const survivingCols = new Set(colIndexMapRef.current);
                 for (let oc = origColCountRef.current - 1; oc >= 0; oc--) {
-                    if (!survivingCols.has(oc)) worksheet.spliceColumns(oc + 1, 1);
+                    if (!survivingCols.has(oc)) worksheet.spliceColumns(dataColExcel(oc), 1);
                 }
 
-                // 2. Вырезаем удалённые строки данных (Excel-строки начинаются с 2).
+                // 2. Вырезаем удалённые строки данных.
                 const survivingRows = new Set(rowIndexMapRef.current);
                 for (let or = origRowCountRef.current - 1; or >= 0; or--) {
-                    if (!survivingRows.has(or)) worksheet.spliceRows(or + 2, 1);
+                    if (!survivingRows.has(or)) worksheet.spliceRows(dataRowExcel(or), 1);
                 }
 
-                // 3. Снимаем устаревшие подсветки/заметки с оставшихся ячеек,
+                // 3. Снимаем устаревшие подсветки/заметки со строк данных,
                 // чтобы синхронизировать с текущим состоянием (учесть снятия).
                 worksheet.eachRow((row: any, rowNumber: number) => {
-                    if (rowNumber === 1) return;
+                    if (rowNumber <= headerRowNum) return;
                     row.eachCell((cell: any) => {
                         if (detectHighlightColor(cell.fill)) {
                             cell.fill = { type: 'pattern', pattern: 'none' };
@@ -525,16 +579,15 @@ const App: React.FC = () => {
                     });
                 });
 
-                // 4. Накладываем актуальные подсветки и заметки.
-                // Текущий индекс (r,c) → Excel (r+2, c+1).
+                // 4. Накладываем актуальные подсветки и заметки со смещением.
                 Object.keys(highlightedCells).forEach(key => {
                     const [r, c] = key.split('-').map(Number);
-                    worksheet.getCell(r + 2, c + 1).fill = fillFor(highlightedCells[key]);
+                    worksheet.getCell(dataRowExcel(r), dataColExcel(c)).fill = fillFor(highlightedCells[key]);
                 });
                 Object.keys(notes).forEach(key => {
                     if (!notes[key]) return;
                     const [r, c] = key.split('-').map(Number);
-                    worksheet.getCell(r + 2, c + 1).note = notes[key];
+                    worksheet.getCell(dataRowExcel(r), dataColExcel(c)).note = notes[key];
                 });
             } else {
                 // --- Фолбэк: исходных байтов нет (файл из облака) — собираем
@@ -770,6 +823,8 @@ const App: React.FC = () => {
         colIndexMapRef.current = [];
         origRowCountRef.current = 0;
         origColCountRef.current = 0;
+        headerRowNumberRef.current = 1;
+        colOffsetRef.current = 0;
         setSelectedCell(null);
         setLastTappedCell(null);
     };
@@ -971,6 +1026,7 @@ const App: React.FC = () => {
                             isCellSelected={!!(selectedCell ?? lastTappedCell)}
                             onReset={resetApp}
                             onSave={handleSaveFile}
+                            onFillEmptyRed={handleFillEmptyRed}
                         />
                     )}
                 </SearchBar>
