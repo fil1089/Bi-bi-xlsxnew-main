@@ -1,7 +1,7 @@
 // POST /api/auth/signup  { email, password } -> { token, user }
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_db';
-import { applyCors, hashPassword, signToken, isValidEmail } from '../_auth';
+import { sql } from '../_db.js';
+import { applyCors, hashPassword, signToken, isValidEmail } from '../_auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     applyCors(res);

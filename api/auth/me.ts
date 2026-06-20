@@ -1,7 +1,7 @@
 // GET /api/auth/me  (Authorization: Bearer <token>) -> { user }
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { sql } from '../_db';
-import { applyCors, getUserFromRequest } from '../_auth';
+import { sql } from '../_db.js';
+import { applyCors, getUserFromRequest } from '../_auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     applyCors(res);
