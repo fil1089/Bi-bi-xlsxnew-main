@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { UploadIcon, TrashIcon, DocumentTextIcon, CameraIcon } from './Icons';
+import { UploadIcon, TrashIcon, DocumentTextIcon } from './Icons';
 import { BiBiLogo } from './BiBiLogo';
 import { isAuthEnabled } from '../lib/supabase';
 import { normalizeCellValue } from '../lib/utils';
@@ -16,7 +16,6 @@ interface FileUploadProps {
     userFiles?: any[];
     onSelectFile?: (file: any) => void;
     onDeleteFile?: (fileName: string) => void;
-    onScan?: () => void;
 }
 
 declare const ExcelJS: any;
@@ -31,8 +30,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
     userEmail = null,
     userFiles = [],
     onSelectFile,
-    onDeleteFile,
-    onScan
+    onDeleteFile
 }) => {
 
     const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -140,16 +138,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
                     <UploadIcon style={{ width: '2rem', height: '2rem' }} />
                     <span className="fw-bold">Выбрать новый файл</span>
                     <span className="small text-gray-400">Перетащите сюда или нажмите для выбора</span>
-                </button>
-
-                <button
-                    onClick={onScan}
-                    className="btn btn-lg btn-outline-secondary w-100 py-3 border-2 border-dashed bg-gray-800 text-gray-300 d-flex flex-column align-items-center justify-content-center gap-2 mb-4 transition-all hover:bg-gray-700"
-                    style={{ minHeight: '8rem' }}
-                >
-                    <CameraIcon style={{ width: '2rem', height: '2rem' }} />
-                    <span className="fw-bold">Создать по фото</span>
-                    <span className="small text-gray-400">Распознавание печатного текста</span>
                 </button>
 
                 {isAuthenticated && userFiles.length > 0 && (
