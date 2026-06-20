@@ -130,6 +130,9 @@ const App: React.FC = () => {
                     colIndexMapRef.current = [];
                     origRowCountRef.current = 0;
                     origColCountRef.current = 0;
+                    // Открываем в режиме «поиск» — иначе панель поиска с клавиатурой
+                    // не отрендерится (она завязана на appMode === 'search').
+                    setAppMode('search');
                 }
             } catch (err: any) {
                 console.error('Error fetching user files:', err);
