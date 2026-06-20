@@ -100,7 +100,10 @@ const FileUpload: React.FC<FileUploadProps> = ({
             {/* Auth buttons in top-right corner - only show if auth is enabled */}
             {/* Top Bar with Logo and Auth */}
             {isAuthEnabled && (
-                <div className="position-absolute top-0 start-0 end-0 p-3 d-flex justify-content-between align-items-center">
+                <div
+                    className="position-absolute top-0 start-0 end-0 px-3 d-flex justify-content-between align-items-center"
+                    style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)', paddingBottom: '0.75rem' }}
+                >
                     <div className="d-flex align-items-center">
                         <BiBiLogo style={{ width: '100px', height: 'auto' }} />
                     </div>

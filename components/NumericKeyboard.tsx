@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { TrashIcon, HighlightIcon, ChevronDownIcon, DocumentTextIcon, BackspaceIcon, PlusIcon, SaveIcon } from './Icons';
 import { FilterType } from '../types';
 
@@ -30,11 +30,17 @@ const KeyButton: React.FC<{
     className?: string;
     title?: string;
     disabled?: boolean;
-}> = ({ onClick, children, className = '', title, disabled = false }) => (
+    onPressStart?: () => void;
+    onPressEnd?: () => void;
+}> = ({ onClick, children, className = '', title, disabled = false, onPressStart, onPressEnd }) => (
     <button
         onClick={onClick}
+        onPointerDown={onPressStart}
+        onPointerUp={onPressEnd}
+        onPointerLeave={onPressEnd}
+        onContextMenu={onPressStart ? (e) => e.preventDefault() : undefined}
         className={`btn-press-anim d-flex align-items-center justify-content-center border-0 fw-bold text-white bg-gray-800 rounded transition-colors ${className} ${disabled ? 'opacity-50' : ''}`}
-        style={{ height: '3rem', width: '100%', fontSize: '1.25rem', cursor: disabled ? 'not-allowed' : 'pointer' }}
+        style={{ height: '3rem', width: '100%', fontSize: '1.25rem', cursor: disabled ? 'not-allowed' : 'pointer', touchAction: 'manipulation', userSelect: 'none' }}
         title={title}
         disabled={disabled}
         aria-label={title || (typeof children === 'string' ? children : 'keyboard button')}
@@ -58,6 +64,35 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         onFillEmptyRed,
     } = props;
 
+    // Долгое удержание карандаша (≥600мс) — перекрасить незакрашенные в красный.
+    // Короткий тап — обычное переключение режима выделения.
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const longPressFiredRef = useRef(false);
+
+    const startHighlightPress = () => {
+        longPressFiredRef.current = false;
+        longPressTimerRef.current = setTimeout(() => {
+            longPressFiredRef.current = true;
+            onFillEmptyRed();
+        }, 600);
+    };
+
+    const cancelHighlightPress = () => {
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    };
+
+    const handleHighlightClick = () => {
+        // Если только что сработало долгое удержание — обычный тап игнорируем.
+        if (longPressFiredRef.current) {
+            longPressFiredRef.current = false;
+            return;
+        }
+        onHighlightToggle();
+    };
+
     const buttons = [
         // Row 1
         { id: '1', content: '1', action: () => onKeyPress('1'), disabled: false },
@@ -73,7 +108,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         { id: '7', content: '7', action: () => onKeyPress('7'), disabled: false },
         { id: '8', content: '8', action: () => onKeyPress('8'), disabled: false },
         { id: '9', content: '9', action: () => onKeyPress('9'), disabled: false },
-        { id: 'highlight', content: <HighlightIcon style={{ width: '1.5rem', height: '1.5rem', color: highlightMode ? 'black' : 'white' }} />, action: onHighlightToggle, className: highlightMode ? 'bg-warning' : 'bg-gray-700', title: "Режим выделения", disabled: false },
+        { id: 'highlight', content: <HighlightIcon style={{ width: '1.5rem', height: '1.5rem', color: highlightMode ? 'black' : 'white' }} />, action: handleHighlightClick, className: highlightMode ? 'bg-warning' : 'bg-gray-700', title: "Режим выделения (удерживайте — закрасить незакрашенные красным)", disabled: false, onPressStart: startHighlightPress, onPressEnd: cancelHighlightPress },
     ];
 
     return (
@@ -98,9 +133,9 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
                     ))}
                 </div>
                 <div className="row g-2 mb-2">
-                    {buttons.slice(8, 12).map(btn => (
+                    {buttons.slice(8, 12).map((btn: any) => (
                         <div key={btn.id} className="col-3">
-                            <KeyButton onClick={btn.action} className={btn.className} title={btn.title} disabled={btn.disabled}>
+                            <KeyButton onClick={btn.action} className={btn.className} title={btn.title} disabled={btn.disabled} onPressStart={btn.onPressStart} onPressEnd={btn.onPressEnd}>
                                 {btn.content}
                             </KeyButton>
                         </div>
@@ -123,17 +158,6 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
                     <div className="col-3">
                         <KeyButton onClick={onAddNote} disabled={!isCellSelected} className="bg-gray-700" title="Добавить/изменить заметку">
                             <DocumentTextIcon style={{ width: '1.5rem', height: '1.5rem' }} />
-                        </KeyButton>
-                    </div>
-                </div>
-                <div className="row g-2 mt-0">
-                    <div className="col-12">
-                        <KeyButton
-                            onClick={onFillEmptyRed}
-                            className="bg-red-800 text-white"
-                            title="Перекрасить все незакрашенные ячейки в красный"
-                        >
-                            <span style={{ fontSize: '0.9rem' }}>Незакрашенные → красный</span>
                         </KeyButton>
                     </div>
                 </div>
