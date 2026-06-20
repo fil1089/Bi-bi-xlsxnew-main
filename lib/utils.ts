@@ -105,33 +105,40 @@ export const readInitialHighlights = (worksheet: any): HighlightedCells => {
         if (rowNumber === 1) return; // Пропустить заголовки
 
         row.eachCell((cell: any, colNumber: number) => {
-            const fill = cell.fill;
-
-            if (fill && fill.type === 'pattern' && fill.pattern === 'solid') {
-                const fgColor = fill.fgColor;
-
-                if (fgColor && fgColor.argb) {
-                    const argb = fgColor.argb;
-                    const rgb = argb.length > 6 ? argb.substring(2) : argb;
-
-                    // Prevent error on invalid hex values
-                    if (rgb && rgb.length >= 6) {
-                        const r = parseInt(rgb.substring(0, 2), 16);
-                        const g = parseInt(rgb.substring(2, 4), 16);
-                        const b = parseInt(rgb.substring(4, 6), 16);
-
-                        const isRed = r > 100 && r > g * 1.5 && r > b * 1.5;
-                        const isGreen = g > 100 && g > r * 1.5 && g > b * 1.5;
-
-                        if (isRed || isGreen) {
-                            const key = `${rowNumber - 2}-${colNumber - 1}`;
-                            highlights[key] = isRed ? 'red' : 'green';
-                        }
-                    }
-                }
+            const color = detectHighlightColor(cell.fill);
+            if (color) {
+                const key = `${rowNumber - 2}-${colNumber - 1}`;
+                highlights[key] = color;
             }
         });
     });
 
     return highlights;
+};
+
+/**
+ * Определяет, является ли заливка ячейки «красной» или «зелёной» подсветкой
+ * (по той же эвристике, что и при чтении файла). Используется и при чтении,
+ * и при экспорте — чтобы понять, какие исходные заливки считать подсветкой.
+ */
+export const detectHighlightColor = (fill: any): 'red' | 'green' | null => {
+    if (!fill || fill.type !== 'pattern' || fill.pattern !== 'solid') return null;
+
+    const fgColor = fill.fgColor;
+    if (!fgColor || !fgColor.argb) return null;
+
+    const argb = fgColor.argb;
+    const rgb = argb.length > 6 ? argb.substring(2) : argb;
+    if (!rgb || rgb.length < 6) return null;
+
+    const r = parseInt(rgb.substring(0, 2), 16);
+    const g = parseInt(rgb.substring(2, 4), 16);
+    const b = parseInt(rgb.substring(4, 6), 16);
+
+    const isRed = r > 100 && r > g * 1.5 && r > b * 1.5;
+    const isGreen = g > 100 && g > r * 1.5 && g > b * 1.5;
+
+    if (isRed) return 'red';
+    if (isGreen) return 'green';
+    return null;
 };

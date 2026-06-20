@@ -1,5 +1,6 @@
 
 import React, { useRef, useEffect, useCallback, useLayoutEffect, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { SheetRow, HighlightedCells, CellNotes } from '../types';
 
 interface DataTableProps {
@@ -39,10 +40,19 @@ const DataTable: React.FC<DataTableProps> = ({
     scrollToRowIndex,
     isKeyboardVisible,
 }) => {
-    const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const resizingColumnRef = useRef<{ index: number; startX: number; startWidth: number; } | null>(null);
     const headerRef = useRef<HTMLTableSectionElement | null>(null);
     const [headerHeight, setHeaderHeight] = useState(0);
+
+    const rowVirtualizer = useVirtualizer({
+        count: data.length,
+        getScrollElement: () => scrollContainerRef.current,
+        estimateSize: () => 37, // средняя высота строки (p-2 + small)
+        overscan: 12,
+        // sticky-заголовок перекрывает верх — резервируем его высоту при скролле к строке.
+        scrollPaddingStart: headerHeight,
+    });
 
     useLayoutEffect(() => {
         if (headerRef.current) {
@@ -51,20 +61,13 @@ const DataTable: React.FC<DataTableProps> = ({
     }, [headers]);
 
     useEffect(() => {
-        rowRefs.current = rowRefs.current.slice(0, data.length);
-    }, [data.length]);
-
-    useEffect(() => {
         if (scrollToRowIndex !== null) {
             const targetRow = data.findIndex(d => d.originalIndex === scrollToRowIndex);
-            if (targetRow !== -1 && rowRefs.current[targetRow]) {
-                rowRefs.current[targetRow]?.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start',
-                });
+            if (targetRow !== -1) {
+                rowVirtualizer.scrollToIndex(targetRow, { align: 'start' });
             }
         }
-    }, [scrollToRowIndex, data]);
+    }, [scrollToRowIndex, data, rowVirtualizer]);
 
     const handleMouseMove = useCallback((e: MouseEvent) => {
         if (!resizingColumnRef.current) return;
@@ -105,6 +108,7 @@ const DataTable: React.FC<DataTableProps> = ({
 
     return (
         <div
+            ref={scrollContainerRef}
             className="flex-grow-1 w-100 overflow-auto"
             style={{ paddingBottom: `${paddingBottom}px` }}
         >
@@ -149,76 +153,120 @@ const DataTable: React.FC<DataTableProps> = ({
                     </tr>
                 </thead>
                 <tbody>
-                    {data.map(({ row, originalIndex }, visualRowIndex) => {
-                        const isMatch = searchMatchesSet.has(originalIndex);
+                    {(() => {
+                        const virtualItems = rowVirtualizer.getVirtualItems();
+                        const totalSize = rowVirtualizer.getTotalSize();
+                        const paddingTop = virtualItems.length > 0 ? virtualItems[0].start : 0;
+                        const paddingBottomRows = virtualItems.length > 0
+                            ? totalSize - virtualItems[virtualItems.length - 1].end
+                            : 0;
 
-                        // Check if the current row should be treated as a full-width subheader
-                        const isSubheader = String(row[0] ?? '').trim().startsWith(REVISION_GROUP_PREFIX);
+                        const rows: React.ReactNode[] = [];
 
-                        const rowRef = (el: HTMLTableRowElement | null) => { rowRefs.current[visualRowIndex] = el; };
-
-                        if (isSubheader) {
-                            return (
-                                <tr key={`subheader-${originalIndex}`} ref={rowRef} className="bg-gray-800" style={rowStyle}>
-                                    <td
-                                        colSpan={headers.length}
-                                        className="p-2 small fw-bold text-gray-200 border-bottom border-end border-secondary whitespace-nowrap sticky left-0 z-10"
-                                    >
-                                        {row[0]}
-                                    </td>
+                        if (paddingTop > 0) {
+                            rows.push(
+                                <tr key="pad-top" aria-hidden="true">
+                                    <td colSpan={headers.length} style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} />
                                 </tr>
                             );
                         }
 
-                        return (
-                            <tr key={originalIndex} ref={rowRef} className="transition-colors duration-300" style={rowStyle}>
-                                {row.map((cell, colIndex) => {
-                                    const cellKey = `${originalIndex}-${colIndex}`;
-                                    const highlightColor = highlightedCells[cellKey];
-                                    const hasNote = !!notes[cellKey];
-                                    const isFirstColumn = colIndex === 0;
-                                    const isSelected = !highlightMode && selectedCell?.row === originalIndex && selectedCell?.col === colIndex;
+                        for (const virtualItem of virtualItems) {
+                            const visualRowIndex = virtualItem.index;
+                            const { row, originalIndex } = data[visualRowIndex];
+                            const isMatch = searchMatchesSet.has(originalIndex);
 
-                                    const classNames = ['position-relative p-2 small text-gray-200 border-bottom border-end border-secondary whitespace-nowrap select-none touch-manipulation transition-colors cursor-pointer'];
+                            // Check if the current row should be treated as a full-width subheader
+                            const isSubheader = String(row[0] ?? '').trim().startsWith(REVISION_GROUP_PREFIX);
 
-                                    if (isFirstColumn) {
-                                        classNames.push('sticky left-0 z-10');
-                                    }
+                            const measureRef = (el: HTMLTableRowElement | null) => rowVirtualizer.measureElement(el);
 
-                                    if (highlightColor) {
-                                        if (highlightColor === 'green') {
-                                            classNames.push('bg-green-800');
-                                        } else { // red
-                                            classNames.push('bg-red-800');
-                                        }
-                                    } else if (isMatch) {
-                                        classNames.push('bg-yellow-800');
-                                    } else {
-                                        classNames.push(visualRowIndex % 2 === 0 ? 'bg-gray-900' : 'bg-black');
-                                    }
-
-                                    return (
+                            if (isSubheader) {
+                                rows.push(
+                                    <tr
+                                        key={`subheader-${originalIndex}`}
+                                        ref={measureRef}
+                                        data-index={visualRowIndex}
+                                        className="bg-gray-800"
+                                        style={rowStyle}
+                                    >
                                         <td
-                                            key={colIndex}
-                                            onClick={() => {
-                                                if (highlightMode) {
-                                                    onCellClick(originalIndex, colIndex);
-                                                } else {
-                                                    onCellSelect(originalIndex, colIndex);
-                                                }
-                                            }}
-                                            className={classNames.join(' ')}
-                                            style={{ touchAction: 'manipulation' }}
+                                            colSpan={headers.length}
+                                            className="p-2 small fw-bold text-gray-200 border-bottom border-end border-secondary whitespace-nowrap sticky left-0 z-10"
                                         >
-                                            {isSelected && <div className="selection-ring" />}
-                                            {hasNote && <div className="position-absolute top-0 end-0 w-0 h-0 border-start-8 border-start-transparent border-top-8 border-top-blue-500" style={{ borderLeft: '8px solid transparent', borderTop: '8px solid #3b82f6' }} title="Есть заметка"></div>}
-                                            <div className="truncate" title={String(cell ?? '')}>{String(cell ?? '')}</div>
+                                            {row[0]}
                                         </td>
-                                    );
-                                })}
-                            </tr>
-                        );
-                    })}
+                                    </tr>
+                                );
+                                continue;
+                            }
+
+                            rows.push(
+                                <tr
+                                    key={originalIndex}
+                                    ref={measureRef}
+                                    data-index={visualRowIndex}
+                                    className="transition-colors duration-300"
+                                    style={rowStyle}
+                                >
+                                    {row.map((cell, colIndex) => {
+                                        const cellKey = `${originalIndex}-${colIndex}`;
+                                        const highlightColor = highlightedCells[cellKey];
+                                        const hasNote = !!notes[cellKey];
+                                        const isFirstColumn = colIndex === 0;
+                                        const isSelected = !highlightMode && selectedCell?.row === originalIndex && selectedCell?.col === colIndex;
+
+                                        const classNames = ['position-relative p-2 small text-gray-200 border-bottom border-end border-secondary whitespace-nowrap select-none touch-manipulation transition-colors cursor-pointer'];
+
+                                        if (isFirstColumn) {
+                                            classNames.push('sticky left-0 z-10');
+                                        }
+
+                                        if (highlightColor) {
+                                            if (highlightColor === 'green') {
+                                                classNames.push('bg-green-800');
+                                            } else { // red
+                                                classNames.push('bg-red-800');
+                                            }
+                                        } else if (isMatch) {
+                                            classNames.push('bg-yellow-800');
+                                        } else {
+                                            classNames.push(visualRowIndex % 2 === 0 ? 'bg-gray-900' : 'bg-black');
+                                        }
+
+                                        return (
+                                            <td
+                                                key={colIndex}
+                                                onClick={() => {
+                                                    if (highlightMode) {
+                                                        onCellClick(originalIndex, colIndex);
+                                                    } else {
+                                                        onCellSelect(originalIndex, colIndex);
+                                                    }
+                                                }}
+                                                className={classNames.join(' ')}
+                                                style={{ touchAction: 'manipulation' }}
+                                            >
+                                                {isSelected && <div className="selection-ring" />}
+                                                {hasNote && <div className="position-absolute top-0 end-0 w-0 h-0 border-start-8 border-start-transparent border-top-8 border-top-blue-500" style={{ borderLeft: '8px solid transparent', borderTop: '8px solid #3b82f6' }} title="Есть заметка"></div>}
+                                                <div className="truncate" title={String(cell ?? '')}>{String(cell ?? '')}</div>
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            );
+                        }
+
+                        if (paddingBottomRows > 0) {
+                            rows.push(
+                                <tr key="pad-bottom" aria-hidden="true">
+                                    <td colSpan={headers.length} style={{ height: `${paddingBottomRows}px`, padding: 0, border: 0 }} />
+                                </tr>
+                            );
+                        }
+
+                        return rows;
+                    })()}
                 </tbody>
             </table>
         </div>

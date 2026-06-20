@@ -2,11 +2,17 @@ import React, { useCallback } from 'react';
 import { UploadIcon, TrashIcon, DocumentTextIcon } from './Icons';
 import { BiBiLogo } from './BiBiLogo';
 import { isAuthEnabled } from '../lib/api';
-import { normalizeCellValue } from '../lib/utils';
-import { SheetData } from '../types';
+import { SheetData, HighlightedCells, CellNotes } from '../types';
+
+export interface ProcessedFileMeta {
+    notes: CellNotes;
+    highlightedCells: HighlightedCells;
+    columnWidths: number[];
+    buffer: ArrayBuffer;
+}
 
 interface FileUploadProps {
-    onFileProcessed: (headers: string[], data: SheetData, fileName: string, worksheet: any) => void;
+    onFileProcessed: (headers: string[], data: SheetData, fileName: string, meta: ProcessedFileMeta) => void;
     setLoading: (loading: boolean) => void;
     setError: (error: string) => void;
     onShowAuth?: () => void;
@@ -17,8 +23,6 @@ interface FileUploadProps {
     onSelectFile?: (file: any) => void;
     onDeleteFile?: (fileName: string) => void;
 }
-
-declare const ExcelJS: any;
 
 const FileUpload: React.FC<FileUploadProps> = ({
     onFileProcessed,
@@ -40,40 +44,39 @@ const FileUpload: React.FC<FileUploadProps> = ({
         setLoading(true);
         setError('');
 
+        // Сбрасываем value, чтобы повторный выбор того же файла снова сработал.
+        event.target.value = '';
+
         try {
             const buffer = await file.arrayBuffer();
-            const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(buffer);
 
-            const worksheet = workbook.worksheets[0];
-            if (!worksheet) {
+            // Парсим в Web Worker, чтобы не блокировать UI на больших файлах.
+            const worker = new Worker(new URL('../lib/xlsx.worker.ts', import.meta.url), {
+                type: 'module',
+            });
+
+            const result = await new Promise<any>((resolve, reject) => {
+                worker.onmessage = (e: MessageEvent) => {
+                    if (e.data?.error) reject(new Error(e.data.error));
+                    else resolve(e.data);
+                };
+                worker.onerror = (e) => reject(new Error(e.message || 'Ошибка воркера'));
+                // Передаём буфер как transferable — без копирования.
+                worker.postMessage({ buffer }, [buffer]);
+            }).finally(() => worker.terminate());
+
+            if (result?.error === 'no-sheets') {
                 setError('Файл не содержит листов');
                 setLoading(false);
                 return;
             }
 
-            // Извлечь заголовки
-            const headers: string[] = [];
-            const headerRow = worksheet.getRow(1);
-            headerRow.eachCell({ includeEmpty: true }, (cell: any) => {
-                headers.push(String(cell.value ?? ''));
+            onFileProcessed(result.headers, result.data, file.name, {
+                notes: result.notes,
+                highlightedCells: result.highlightedCells,
+                columnWidths: result.columnWidths,
+                buffer: result.buffer,
             });
-
-            // Извлечь данные
-            const data: SheetData = [];
-            for (let i = 2; i <= worksheet.rowCount; i++) {
-                const row = worksheet.getRow(i);
-                const rowData: (string | number | boolean | null)[] = [];
-
-                for (let j = 1; j <= headers.length; j++) {
-                    const cell = row.getCell(j);
-                    rowData.push(normalizeCellValue(cell.value));
-                }
-
-                data.push(rowData);
-            }
-
-            onFileProcessed(headers, data, file.name, worksheet);
         } catch (err) {
             console.error('Ошибка загрузки:', err);
             setError('Не удалось загрузить файл');

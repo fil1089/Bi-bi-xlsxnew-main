@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useLayoutEffect, useEffect } from 'react';
-import FileUpload from './components/FileUpload';
+import FileUpload, { ProcessedFileMeta } from './components/FileUpload';
 import DataTable from './components/DataTable';
 import NoteEditor from './components/NoteEditor';
 import FileEditor from './components/FileEditor';
@@ -12,10 +12,13 @@ import { BiBiLogo } from './components/BiBiLogo';
 import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
-import { calculateAutoWidths, readInitialWidths, readInitialHighlights, readInitialNotes } from './lib/utils';
+import { calculateAutoWidths, detectHighlightColor } from './lib/utils';
 import { SheetData, HighlightedCells, CellNotes, FilterType } from './types';
+import * as ExcelJSImport from 'exceljs';
 
-declare const ExcelJS: any;
+// exceljs резолвится Vite через browser-поле в dist/exceljs.min.js (UMD).
+// Берём конструктор устойчиво к разным формам интеропа.
+const ExcelJS: any = (ExcelJSImport as any).default ?? ExcelJSImport;
 
 type NoteEditorState = {
     visible: true;
@@ -41,7 +44,7 @@ const App: React.FC = () => {
         headers: string[];
         data: SheetData;
         fileName: string;
-        worksheet?: any;
+        buffer?: ArrayBuffer;
         notes?: CellNotes;
         highlightedCells?: HighlightedCells;
         columnWidths?: number[];
@@ -49,7 +52,16 @@ const App: React.FC = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [originalWorksheet, setOriginalWorksheet] = useState<any>(null);
+
+    // Исходные байты загруженного .xlsx — чтобы экспортировать поверх оригинала
+    // и сохранить форматирование. null, если файл пришёл из облака (без байтов).
+    const originalBufferRef = useRef<ArrayBuffer | null>(null);
+    // Карты соответствия текущего индекса исходному (0-based) — обновляются при
+    // удалении строк/столбцов, чтобы при экспорте знать, что вырезать из оригинала.
+    const rowIndexMapRef = useRef<number[]>([]);
+    const colIndexMapRef = useRef<number[]>([]);
+    const origRowCountRef = useRef<number>(0);
+    const origColCountRef = useRef<number>(0);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -112,6 +124,12 @@ const App: React.FC = () => {
                     setHighlightedCells(lastFile.highlighted_cells || {});
                     setNotes(lastFile.notes || {});
                     setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
+                    // Облачный файл — исходных байтов нет, экспорт пойдёт по фолбэку.
+                    originalBufferRef.current = null;
+                    rowIndexMapRef.current = [];
+                    colIndexMapRef.current = [];
+                    origRowCountRef.current = 0;
+                    origColCountRef.current = 0;
                 }
             } catch (err: any) {
                 console.error('Error fetching user files:', err);
@@ -150,19 +168,15 @@ const App: React.FC = () => {
         setSelectedCell(null);
     }, [filter]);
 
-    const handleFileProcessed = useCallback(async (newHeaders: string[], newData: SheetData, newFileName: string, worksheet: any) => {
-        const initialNotesData = readInitialNotes(worksheet);
-        const initialHighlightsData = readInitialHighlights(worksheet);
-        const initialWidthsData = readInitialWidths(worksheet, newHeaders, newData);
-
+    const handleFileProcessed = useCallback(async (newHeaders: string[], newData: SheetData, newFileName: string, meta: ProcessedFileMeta) => {
         setPendingFile({
             headers: newHeaders,
             data: newData,
             fileName: newFileName,
-            worksheet: worksheet,
-            notes: initialNotesData,
-            highlightedCells: initialHighlightsData,
-            columnWidths: initialWidthsData
+            buffer: meta.buffer,
+            notes: meta.notes,
+            highlightedCells: meta.highlightedCells,
+            columnWidths: meta.columnWidths
         });
 
         // Refresh file list
@@ -190,8 +204,11 @@ const App: React.FC = () => {
     const handleModeSelect = (mode: 'search' | 'edit') => {
         if (!pendingFile) return;
 
-        setHeaders(pendingFile.headers || []);
-        setSheetData(pendingFile.data || []);
+        const newHeaders = pendingFile.headers || [];
+        const newData = pendingFile.data || [];
+
+        setHeaders(newHeaders);
+        setSheetData(newData);
         setFileName(pendingFile.fileName);
 
         setNotes(pendingFile.notes || {});
@@ -199,17 +216,16 @@ const App: React.FC = () => {
 
         if (pendingFile.columnWidths && pendingFile.columnWidths.length > 0) {
             setColumnWidths(pendingFile.columnWidths);
-        } else if (pendingFile.worksheet) {
-            setColumnWidths(readInitialWidths(pendingFile.worksheet, pendingFile.headers, pendingFile.data));
         } else {
-            setColumnWidths(calculateAutoWidths(pendingFile.headers, pendingFile.data));
+            setColumnWidths(calculateAutoWidths(newHeaders, newData));
         }
 
-        if (pendingFile.worksheet) {
-            setOriginalWorksheet(pendingFile.worksheet);
-        } else {
-            setOriginalWorksheet(null);
-        }
+        // Сохраняем исходные байты и инициализируем карты индексов «как есть».
+        originalBufferRef.current = pendingFile.buffer ?? null;
+        origRowCountRef.current = newData.length;
+        origColCountRef.current = newHeaders.length;
+        rowIndexMapRef.current = newData.map((_, i) => i);
+        colIndexMapRef.current = newHeaders.map((_, i) => i);
 
         setSearchQuery('');
         setHighlightedHeaderIndices(new Set());
@@ -228,6 +244,9 @@ const App: React.FC = () => {
         const deletedSet = new Set(sortedIndices);
 
         setSheetData(prev => prev.filter((_, index) => !deletedSet.has(index)));
+
+        // Синхронизируем карту строк: выкидываем те же визуальные индексы.
+        rowIndexMapRef.current = rowIndexMapRef.current.filter((_, index) => !deletedSet.has(index));
 
         const remapKeys = (obj: any) => {
             const newObj: any = {};
@@ -254,6 +273,9 @@ const App: React.FC = () => {
             return row.filter((_, index) => !deletedSet.has(index));
         }));
         setColumnWidths(prev => prev.filter((_, index) => !deletedSet.has(index)));
+
+        // Синхронизируем карту столбцов.
+        colIndexMapRef.current = colIndexMapRef.current.filter((_, index) => !deletedSet.has(index));
 
         const remapKeys = (obj: any) => {
             const newObj: any = {};
@@ -451,44 +473,84 @@ const App: React.FC = () => {
 
         try {
             const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet("Основной лист");
 
-            // Add headers
-            worksheet.addRow(headers.map(h => h ?? ''));
-
-            // Add data with styles and comments
-            sheetData.forEach((row, rowIndex) => {
-                const excelRow = worksheet.addRow(row.map(c => c ?? null));
-
-                row.forEach((cell, colIndex) => {
-                    const cellKey = `${rowIndex}-${colIndex}`;
-                    const excelCell = excelRow.getCell(colIndex + 1);
-
-                    // Apply color
-                    if (highlightedCells[cellKey]) {
-                        excelCell.fill = {
-                            type: 'pattern',
-                            pattern: 'solid',
-                            fgColor: {
-                                argb: highlightedCells[cellKey] === 'green'
-                                    ? 'FF00B050'
-                                    : 'FFFF0000'
-                            }
-                        };
-                    }
-
-                    if (notes[cellKey]) {
-                        excelCell.note = notes[cellKey];
-                    }
-                });
+            const fillFor = (color: 'red' | 'green') => ({
+                type: 'pattern' as const,
+                pattern: 'solid' as const,
+                fgColor: { argb: color === 'green' ? 'FF00B050' : 'FFFF0000' },
             });
 
-            if (headers.length > 0) {
-                for (let i = 1; i <= headers.length; i++) {
-                    if (i === 1) {
-                        worksheet.getColumn(1).width = 5;
-                    } else {
-                        worksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
+            if (originalBufferRef.current) {
+                // --- Экспорт ПОВЕРХ оригинала: сохраняем шрифты, границы,
+                // числовые форматы, формулы и ширины исходного файла. ---
+                await workbook.xlsx.load(originalBufferRef.current);
+                const worksheet = workbook.worksheets[0];
+
+                // 1. Вырезаем удалённые столбцы (от старших индексов к младшим).
+                const survivingCols = new Set(colIndexMapRef.current);
+                for (let oc = origColCountRef.current - 1; oc >= 0; oc--) {
+                    if (!survivingCols.has(oc)) worksheet.spliceColumns(oc + 1, 1);
+                }
+
+                // 2. Вырезаем удалённые строки данных (Excel-строки начинаются с 2).
+                const survivingRows = new Set(rowIndexMapRef.current);
+                for (let or = origRowCountRef.current - 1; or >= 0; or--) {
+                    if (!survivingRows.has(or)) worksheet.spliceRows(or + 2, 1);
+                }
+
+                // 3. Снимаем устаревшие подсветки/заметки с оставшихся ячеек,
+                // чтобы синхронизировать с текущим состоянием (учесть снятия).
+                worksheet.eachRow((row: any, rowNumber: number) => {
+                    if (rowNumber === 1) return;
+                    row.eachCell((cell: any) => {
+                        if (detectHighlightColor(cell.fill)) {
+                            cell.fill = { type: 'pattern', pattern: 'none' };
+                        }
+                        if (cell.note) cell.note = undefined;
+                    });
+                });
+
+                // 4. Накладываем актуальные подсветки и заметки.
+                // Текущий индекс (r,c) → Excel (r+2, c+1).
+                Object.keys(highlightedCells).forEach(key => {
+                    const [r, c] = key.split('-').map(Number);
+                    worksheet.getCell(r + 2, c + 1).fill = fillFor(highlightedCells[key]);
+                });
+                Object.keys(notes).forEach(key => {
+                    if (!notes[key]) return;
+                    const [r, c] = key.split('-').map(Number);
+                    worksheet.getCell(r + 2, c + 1).note = notes[key];
+                });
+            } else {
+                // --- Фолбэк: исходных байтов нет (файл из облака) — собираем
+                // основной лист с нуля, как раньше. ---
+                const worksheet = workbook.addWorksheet("Основной лист");
+
+                worksheet.addRow(headers.map(h => h ?? ''));
+
+                sheetData.forEach((row, rowIndex) => {
+                    const excelRow = worksheet.addRow(row.map(c => c ?? null));
+
+                    row.forEach((cell, colIndex) => {
+                        const cellKey = `${rowIndex}-${colIndex}`;
+                        const excelCell = excelRow.getCell(colIndex + 1);
+
+                        if (highlightedCells[cellKey]) {
+                            excelCell.fill = fillFor(highlightedCells[cellKey]);
+                        }
+                        if (notes[cellKey]) {
+                            excelCell.note = notes[cellKey];
+                        }
+                    });
+                });
+
+                if (headers.length > 0) {
+                    for (let i = 1; i <= headers.length; i++) {
+                        if (i === 1) {
+                            worksheet.getColumn(1).width = 5;
+                        } else {
+                            worksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
+                        }
                     }
                 }
             }
@@ -688,7 +750,11 @@ const App: React.FC = () => {
         setKeyboardVisible(false);
         setHighlightedHeaderIndices(new Set());
         setHighlightMode(false);
-        setOriginalWorksheet(null);
+        originalBufferRef.current = null;
+        rowIndexMapRef.current = [];
+        colIndexMapRef.current = [];
+        origRowCountRef.current = 0;
+        origColCountRef.current = 0;
         setSelectedCell(null);
     };
 
