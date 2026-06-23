@@ -21,6 +21,7 @@ interface NumericKeyboardProps {
     isCellSelected: boolean;
     onReset: () => void;
     onSave: () => void;
+    onForceSave: () => void;
     onFillEmptyRed: () => void;
 }
 
@@ -61,6 +62,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         isCellSelected,
         onReset,
         onSave,
+        onForceSave,
         onFillEmptyRed,
     } = props;
 
@@ -91,6 +93,35 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
             return;
         }
         onHighlightToggle();
+    };
+
+    // Долгое удержание кнопки сохранения (≥600мс) — форсировать сохранение на
+    // сервер (минуя debounce автосейва). Короткий тап — скачать файл .xlsx.
+    const savePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const savePressFiredRef = useRef(false);
+
+    const startSavePress = () => {
+        savePressFiredRef.current = false;
+        savePressTimerRef.current = setTimeout(() => {
+            savePressFiredRef.current = true;
+            onForceSave();
+        }, 600);
+    };
+
+    const cancelSavePress = () => {
+        if (savePressTimerRef.current) {
+            clearTimeout(savePressTimerRef.current);
+            savePressTimerRef.current = null;
+        }
+    };
+
+    const handleSaveClick = () => {
+        // Если только что сработало долгое удержание — обычный тап игнорируем.
+        if (savePressFiredRef.current) {
+            savePressFiredRef.current = false;
+            return;
+        }
+        onSave();
     };
 
     const buttons = [
@@ -143,7 +174,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
                 </div>
                 <div className="row g-2">
                     <div className="col-3">
-                        <KeyButton onClick={onSave} className="bg-gray-800 text-white" title="Сохранить">
+                        <KeyButton onClick={handleSaveClick} onPressStart={startSavePress} onPressEnd={cancelSavePress} className="bg-gray-800 text-white" title="Сохранить (тап — скачать файл; удерживайте — сохранить на сервер)">
                             <SaveIcon style={{ width: '1.5rem', height: '1.5rem' }} />
                         </KeyButton>
                     </div>

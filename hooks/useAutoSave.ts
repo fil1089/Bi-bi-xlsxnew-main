@@ -23,6 +23,10 @@ export const useAutoSave = (
     // Последние данные, ожидающие сохранения. Нужны, чтобы перепланировать
     // попытку, если в момент срабатывания таймера предыдущее сохранение ещё идёт.
     const pendingDataRef = useRef<AutoSaveData | null>(null);
+    // Актуальные данные для ручного flush() — чтобы не пересоздавать колбэк при
+    // каждом изменении.
+    const dataRef = useRef<AutoSaveData | null>(data);
+    dataRef.current = data;
 
     const save = useCallback(async (saveData: AutoSaveData, isRetry = false) => {
         // Если сохранение уже идёт — не теряем цикл, а запоминаем данные и
@@ -103,4 +107,21 @@ export const useAutoSave = (
             }
         };
     }, [data, delay, save]);
+
+    // Ручное сохранение «прямо сейчас»: отменяет отложенный автосейв и немедленно
+    // отправляет актуальные данные на сервер, минуя debounce. Возвращает промис,
+    // чтобы вызывающая сторона могла дождаться завершения (для подтверждения).
+    const flush = useCallback(() => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+        const current = dataRef.current;
+        if (!current || !current.user_id || !current.file_name) {
+            return Promise.resolve();
+        }
+        return save(current);
+    }, [save]);
+
+    return flush;
 };

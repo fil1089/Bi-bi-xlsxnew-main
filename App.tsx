@@ -96,6 +96,9 @@ const App: React.FC = () => {
     const [lastTappedCell, setLastTappedCell] = useState<{ row: number, col: number } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+    // Короткое подтверждение ручного сохранения на сервер.
+    const [savedToast, setSavedToast] = useState(false);
+    const savedToastTimerRef = useRef<NodeJS.Timeout | null>(null);
     const [userFiles, setUserFiles] = useState<any[]>([]);
     const initialFetchAttempted = useRef(false);
 
@@ -113,7 +116,21 @@ const App: React.FC = () => {
         };
     }, [user, fileName, sheetData, headers, notes, highlightedCells]);
 
-    useAutoSave(autoSaveData, 5000, setIsSaving, setSaveError);
+    const flushAutoSave = useAutoSave(autoSaveData, 5000, setIsSaving, setSaveError);
+
+    // Ручное сохранение на сервер по долгому нажатию: форсируем flush автосейва,
+    // минуя debounce, и показываем короткое подтверждение «Сохранено».
+    const handleForceSave = useCallback(async () => {
+        setSaveError(null);
+        await flushAutoSave();
+        // Показываем тост оптимистично; в рендере он скрывается, если выставлена
+        // ошибка сохранения (saveError перекрывает подтверждение).
+        if (savedToastTimerRef.current) {
+            clearTimeout(savedToastTimerRef.current);
+        }
+        setSavedToast(true);
+        savedToastTimerRef.current = setTimeout(() => setSavedToast(false), 2000);
+    }, [flushAutoSave]);
 
     // Fetch user files on login
     useEffect(() => {
@@ -998,6 +1015,14 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
+            {fileName && savedToast && !isSaving && !saveError && (
+                <div className="position-fixed top-0 end-0 p-2 z-1050 pointer-events-none">
+                    <div className="d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-success text-success">
+                        <CloudIcon style={{ width: '1rem', height: '1rem' }} />
+                        <span>Сохранено ✓</span>
+                    </div>
+                </div>
+            )}
             {appMode === 'search' && fileName && (
                 <SearchBar
                     searchQuery={searchQuery}
@@ -1026,6 +1051,7 @@ const App: React.FC = () => {
                             isCellSelected={!!(selectedCell ?? lastTappedCell)}
                             onReset={resetApp}
                             onSave={handleSaveFile}
+                            onForceSave={handleForceSave}
                             onFillEmptyRed={handleFillEmptyRed}
                         />
                     )}
