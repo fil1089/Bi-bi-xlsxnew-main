@@ -1005,7 +1005,7 @@ const App: React.FC = () => {
                 />
             )}
             {fileName && (isSaving || saveError) && (
-                <div className="position-fixed top-0 end-0 p-2 z-1050 pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}>
+                <div className="position-fixed top-0 end-0 z-1050 pointer-events-none" style={{ padding: '0.5rem', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}>
                     <div
                         onClick={() => saveError && setSaveError(null)}
                         className={`d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-secondary pointer-events-auto ${saveError ? 'text-danger cursor-pointer' : 'text-warning animate-pulse'}`}
@@ -1016,7 +1016,7 @@ const App: React.FC = () => {
                 </div>
             )}
             {fileName && savedToast && !isSaving && !saveError && (
-                <div className="position-fixed top-0 end-0 p-2 z-1050 pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}>
+                <div className="position-fixed top-0 end-0 z-1050 pointer-events-none" style={{ padding: '0.5rem', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)' }}>
                     <div className="d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-success text-success">
                         <CloudIcon style={{ width: '1rem', height: '1rem' }} />
                         <span>Сохранено ✓</span>
