@@ -966,7 +966,7 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="d-flex flex-column position-relative" style={{ height: '100vh', overflow: 'hidden' }}>
+        <div className="d-flex flex-column position-relative" style={{ height: '100vh', overflow: 'hidden', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
             {pendingFile && (
                 <ModeSelectionModal
                     fileName={pendingFile.fileName}
