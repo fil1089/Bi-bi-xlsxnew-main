@@ -110,7 +110,7 @@ const DataTable: React.FC<DataTableProps> = ({
         <div
             ref={scrollContainerRef}
             className="flex-grow-1 w-100 overflow-auto"
-            style={{ paddingBottom: `${paddingBottom}px` }}
+            style={{ paddingBottom: `calc(${paddingBottom}px + env(safe-area-inset-bottom, 0px))` }}
         >
             <table className="w-100 border-collapse" style={{ tableLayout: columnWidths.length > 0 ? 'fixed' : 'auto' }}>
                 {columnWidths.length > 0 && (

@@ -49,7 +49,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
     }, []);
 
     return (
-        <div className="position-fixed start-0 end-0 bottom-0 z-1050 bg-black bg-opacity-75 backdrop-blur border-top border-secondary d-flex flex-column transition-all">
+        <div className="position-fixed start-0 end-0 bottom-0 z-1050 bg-black bg-opacity-75 backdrop-blur border-top border-secondary d-flex flex-column transition-all" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
             <div className="d-flex align-items-center gap-2 p-2 mx-auto w-100" style={{ maxWidth: '28rem' }}>
                 <div className="position-relative flex-shrink-0" ref={filterRef}>
                     <button
