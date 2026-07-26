@@ -479,12 +479,20 @@ const App: React.FC = () => {
 
     // Перекрасить все НЕЗАКРАШЕННЫЕ ячейки видимых строк в красный.
     // «Незакрашенные» = без записи в highlightedCells. Сабхедеры пропускаем.
+    // Теперь красим только столбец "Вн.ном.".
     const handleFillEmptyRed = () => {
         if (sheetData.length === 0) return;
-        if (!window.confirm('Перекрасить все незакрашенные ячейки видимых строк в красный?')) return;
+        if (!window.confirm('Перекрасить все незакрашенные ячейки артикулов (Вн.ном.) видимых строк в красный?')) return;
 
         setHighlightedCells(prev => {
             const newHighlights = { ...prev };
+            
+            // Находим индекс столбца "Вн.ном."
+            const targetColIndex = headers.findIndex(h => String(h).trim() === 'Вн.ном.');
+            if (targetColIndex === -1) {
+                alert('Столбец "Вн.ном." не найден');
+                return prev;
+            }
 
             filteredData.forEach(({ row, originalIndex }) => {
                 // Пропускаем строки-заголовки ревизионных групп.
@@ -492,12 +500,11 @@ const App: React.FC = () => {
                 if (isSubheader) return;
 
                 let rowGotRed = false;
-                for (let colIndex = 0; colIndex < row.length; colIndex++) {
-                    const key = `${originalIndex}-${colIndex}`;
-                    if (!newHighlights[key]) {
-                        newHighlights[key] = 'red';
-                        rowGotRed = true;
-                    }
+                
+                const key = `${originalIndex}-${targetColIndex}`;
+                if (!newHighlights[key]) {
+                    newHighlights[key] = 'red';
+                    rowGotRed = true;
                 }
 
                 // То же правило, что в handleCellClick: если в строке появился
