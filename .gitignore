@@ -10,7 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Локальная копия сборки для теста server.mjs (на сервер едет через deploy_bibi.py)
+public_html
 *.local
+# Серверный .env Спринтхоста (секреты — только на сервере, собирает deploy_bibi.py)
+.env
 
 # Git push token (НЕ коммитить — содержит секрет)
 .git-token

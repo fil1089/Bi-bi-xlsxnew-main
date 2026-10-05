@@ -1,0 +1,11 @@
+# Passenger Node.js app (поддомен xlsx-bibi.aibrainpulse.ru)
+# Секреты НЕ здесь — они в файле .env рядом (создаётся деплоем из .env.local).
+PassengerAppType node
+PassengerStartupFile passenger.js
+PassengerAppRoot /home/a1246954/domains/aibrainpulse.ru/public_html/xlsx-bibi/
+PassengerNodejs /opt/rh/rh-nodejs22/root/usr/bin/node
+
+RewriteEngine On
+# Пробрасываем Authorization в Node-приложение
+RewriteCond %{HTTP:Authorization} ^(.*)
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
