@@ -1,0 +1,102 @@
+# История: PWA + свой домен + переезд с Vercel на Спринтхост
+
+Проект: Bi-bi XLSX Editor Lite (`H:\Bi-bi\Bi-bi-xlsx-main2\Bi-bi-xlsx-main`,
+GitHub `fil1089/Bi-bi-xlsxnew-main`, ветка `master`).
+Сайт: `https://xlsx-bibi.aibrainpulse.ru`. Дата: 05.10.2026.
+
+## 1. PWA (коммит `871bab1`)
+
+Было: манифест, иконки и мета-теги уже лежали в проекте,
+но service worker отсутствовал (`public/sw.js` давал 404) — PWA было неполным.
+Стало:
+- `public/sw.js` — кэш статики (cache-first), `/api/*` всегда только сеть,
+  навигация — сеть с офлайн-фолбэком на `index.html`;
+- регистрация SW в `index.tsx`;
+- `vercel.json` — заголовки `Cache-Control: must-revalidate` для `/sw.js`
+  и content-type для манифеста.
+Сборка `npm run build` проверена локально, `dist/` содержит `sw.js` и манифест.
+
+## 2. Свой домен вместо `*.vercel.app`
+
+Проблема: `*.vercel.app` в РФ без VPN не открывался (IP/SNI-блокировки CDN),
+а `vercel.com` открывался.
+Решение: поддомен `xlsx-bibi.aibrainpulse.ru`, DNS-зона на Спринтхосте:
+- сначала CNAME `xlsx-bibi -> cname.vercel-dns.com`,
+- затем Vercel (Domains → Add Existing) выдал точное значение —
+  итог: CNAME `xlsx-bibi -> 9e4f1ea0ae2d04d5.vercel-dns-017.com`.
+Нюансы панели Спринтхоста:
+- CNAME нельзя сохранить, пока имя занято A/AAAA («уже используется
+  записями других типов») — старые A/AAAA `xlsx-bibi` и `www.xlsx-bibi`
+  надо было удалить галочками + «Удалить выбранные»;
+- `www.xlsx-bibi` отдельно создавать НЕ надо.
+Домен в Vercel получил Valid, страницы стали открываться без VPN.
+
+## 3. Сохранение висело без VPN (диагностика)
+
+Симптом: тост «Сохранение...» висел минутами, потом «Ошибка: Failed to fetch».
+Проверено:
+- вход и `GET /api/files` работали (в логах Vercel только login + GET 200/304,
+  `POST /api/files` не долетал вообще);
+- `GET /api/files` без токена честно отвечал 401;
+- в DevTools → Network: `POST /api/files` — сетевая ошибка, 0 Б, 1–2.5 мин;
+- файлы те же, что раньше сохранялись (лимиты ни при чем);
+- путаница «на телефоне работает» оказалась разовым срабатыванием;
+- итог: **с VPN сохраняется везде, без VPN — нигде**.
+Вывод: маршрут до Vercel душит большой аплоад (вся таблица целиком в POST),
+маленькие запросы протискиваются. Лечится только хостингом в РФ.
+Детали по шагам — в `H:\xlsx-bibi-domain-setup.txt`.
+
+## 4. Переезд API+фронта на Спринтхост (коммит `b8f512d`)
+
+Поддомен как сайт уже был создан в панели («Уже добавлен»), папка:
+`/home/a1246954/domains/aibrainpulse.ru/public_html/xlsx-bibi/`
+(субдомены лежат в `public_html/<имя>`). Node 22 на сервере есть.
+Проверено заранее: Neon доступен с сервера (`NEON-REACHABLE`).
+
+Что добавлено (коммит `b8f512d`):
+- `server.mjs` — Express: dotenv, CORS, compression, `json 50mb`,
+  ленивые хендлеры, статика из `./public_html`, SPA-фолбэк, retry listen;
+- `passenger.js` — CJS-обертка для Passenger 4.0 (ВАЖНО: сначала назывался
+  `app.js`, но Vite резолвил `import App from './App'` в него вместо `App.tsx`
+  и сборка падала — переименован);
+- `api/_db.mjs`, `api/_auth.mjs`, `api/auth/*.mjs`, `api/files/*.mjs` —
+  логика 1:1 с `.ts`-версиями (Vercel-файлы оставлены как резерв);
+- `package.server.json` — серверные зависимости (express 4, neon, bcryptjs...);
+- `.htaccess.subdomain` — Passenger (без секретов, секреты только в `.env`);
+- `.env.server.example` — шаблон;
+- `deploy_bibi.py` — деплой по SFTP как у Api migr (пароль только через
+  `BIBI_SSH_PASS` или ввод руками, в репо его нет);
+- `.gitignore` — добавлены `.env` и `public_html/`.
+
+База НЕ переносилась: тот же Neon (`DATABASE_URL`) и тот же `JWT_SECRET`,
+поэтому пользователи, файлы и токены подхватились как есть.
+`.env` на сервере собирает деплой-скрипт из локального `.env.local`.
+
+Проверено после деплоя (напрямую по IP с Host-заголовком):
+- `/api/health` → `{"status":"ok","db":"connected"}`;
+- `/` → 200; `/sw.js` → 200;
+- `POST /api/files` без токена → 401 (гейт на месте).
+
+## 5. Текущее состояние
+
+DNS возвращен на Спринтхост: A `xlsx-bibi -> 141.8.192.25`
+(CNAME на Vercel удален; AAAA необязательна).
+Vercel-деплой оставлен как резерв (код общий, база общая).
+
+## 6. Как деплоить дальше
+
+```bash
+cd H:\Bi-bi\Bi-bi-xlsx-main2\Bi-bi-xlsx-main
+BIBI_SSH_PASS=... python -u deploy_bibi.py            # build + full deploy
+BIBI_SSH_PASS=... python -u deploy_bibi.py --frontend # только фронт
+BIBI_SSH_PASS=... python -u deploy_bibi.py --backend  # только бэк
+BIBI_SSH_PASS=... python -u deploy_bibi.py --dry-run --no-build  # проверка
+```
+
+## 7. Осталось (не горит)
+
+- Иконки `icon-192/512.png` похожи на заглушки (2.5/11 КБ) — пересобрать
+  из `H:\Bi-bi\logo.svg`, если install-баннер будет ругаться;
+- решить судьбу Vercel-резерва (оставить/отвязать);
+- SSH-ключ `home-pc` лежит в `C:\Users\Raketa\.ssh\`, копия — в `H:\ssh-sprintbox\`;
+- бокс на Спринтбокс (Debian 13, тариф Студент) так и не создан — не понадобился.

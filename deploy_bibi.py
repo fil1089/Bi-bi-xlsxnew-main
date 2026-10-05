@@ -222,10 +222,10 @@ def main():
         print(out.strip() or err.strip())
         print('waiting 15s for passenger...')
         time.sleep(15)
-        print('== health check ==')
+        print('== health check (напрямую по IP, DNS пока на Vercel) ==')
         code, out, err = exec_cmd(
             client,
-            f'curl -sk -m 25 {SITE_URL}/api/health; echo',
+            'curl -sk -m 25 -H "Host: xlsx-bibi.aibrainpulse.ru" http://141.8.192.25/api/health; echo',
         )
         print(out.strip() or err.strip())
 
