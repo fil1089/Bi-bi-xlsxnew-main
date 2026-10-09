@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ClearIcon, ChevronLeftIcon, ChevronRightIcon, FilterIcon, PlusIcon, TrashIcon, HomeIcon } from './Icons';
+import { ClearIcon, ChevronLeftIcon, ChevronRightIcon, FilterIcon, PlusIcon, TrashIcon, HomeIcon, SearchIcon } from './Icons';
 import { FilterType } from '../types';
 
 interface SearchBarProps {
@@ -14,6 +14,11 @@ interface SearchBarProps {
     setFilter: (filter: FilterType) => void;
     onReset: () => void;
     children?: React.ReactNode;
+    // Режим ввода в ячейку: поле поиска прячется, видно текущее значение.
+    cellInputActive?: boolean;
+    cellDisplayValue?: string;
+    onShowSearch?: () => void;
+    focusSearchToken?: number;
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({
@@ -26,10 +31,22 @@ const SearchBar: React.FC<SearchBarProps> = ({
     filter,
     setFilter,
     onReset,
-    children
+    children,
+    cellInputActive = false,
+    cellDisplayValue = '',
+    onShowSearch,
+    focusSearchToken = 0,
 }) => {
     const [isFilterOpen, setFilterOpen] = useState(false);
     const filterRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+
+    // Возврат к поиску кнопкой-лупой: сразу ставим фокус в поле.
+    useEffect(() => {
+        if (focusSearchToken > 0 && !cellInputActive) {
+            searchInputRef.current?.focus();
+        }
+    }, [focusSearchToken, cellInputActive]);
 
     const filterOptions: { value: FilterType, label: string }[] = [
         { value: 'all', label: 'Все строки' },
@@ -100,18 +117,40 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 </button>
 
                 <div className="position-relative flex-grow-1">
-                    <input
-                        type="text"
-                        placeholder="Поиск..."
-                        value={searchQuery}
-                        readOnly
-                        onFocus={onFocus}
-                        className={`form-control bg-gray-900 border-secondary text-white cursor-pointer focus-warning ${searchQuery ? 'border-warning' : ''}`}
-                        style={{ height: '2.5rem', fontSize: '0.875rem', paddingLeft: '0.75rem', paddingRight: '0.75rem' }}
-                        aria-label="Поле поиска, нажмите для ввода"
-                    />
+                    {cellInputActive ? (
+                        <div
+                            className="form-control bg-gray-900 border-success text-white text-truncate d-flex align-items-center"
+                            style={{ height: '2.5rem', fontSize: '0.875rem', paddingLeft: '0.75rem', paddingRight: '0.75rem' }}
+                            title="Вводимое количество"
+                        >
+                            {cellDisplayValue !== '' ? cellDisplayValue : '—'}
+                        </div>
+                    ) : (
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Поиск..."
+                            value={searchQuery}
+                            readOnly
+                            onFocus={onFocus}
+                            className={`form-control bg-gray-900 border-secondary text-white cursor-pointer focus-warning ${searchQuery ? 'border-warning' : ''}`}
+                            style={{ height: '2.5rem', fontSize: '0.875rem', paddingLeft: '0.75rem', paddingRight: '0.75rem' }}
+                            aria-label="Поле поиска, нажмите для ввода"
+                        />
+                    )}
                 </div>
-                {searchMatchCount > 0 && (
+                {cellInputActive && (
+                    <button
+                        onClick={onShowSearch}
+                        className="btn p-0 d-flex align-items-center justify-content-center transition-colors border border-secondary text-gray-200 bg-gray-900 flex-shrink-0"
+                        style={{ height: '2.5rem', width: '2.5rem' }}
+                        title="Вернуться к поиску"
+                        aria-label="Вернуться к поиску"
+                    >
+                        <SearchIcon style={{ width: '1.25rem', height: '1.25rem' }} />
+                    </button>
+                )}
+                {!cellInputActive && searchMatchCount > 0 && (
                     <div className="d-flex align-items-center gap-1 bg-gray-800 border border-secondary rounded px-2 flex-shrink-0" style={{ height: '2.5rem' }}>
                         <span className="small text-gray-300 white-space-nowrap">{currentMatchIndex + 1} / {searchMatchCount}</span>
                         <button onClick={() => onNavigateMatch('prev')} className="btn btn-link p-1 text-gray-200 d-flex align-items-center border-0" disabled={currentMatchIndex <= 0} aria-label="Предыдущее совпадение">

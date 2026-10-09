@@ -116,6 +116,14 @@ const App: React.FC = () => {
     // Короткое подтверждение ручного сохранения на сервер.
     const [savedToast, setSavedToast] = useState(false);
     const savedToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Подтверждение автовключения пересчёта («видимая зелень»).
+    const [countToastText, setCountToastText] = useState('');
+    const countToastTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const flashCountToast = useCallback((headerName: string) => {
+        if (countToastTimerRef.current) clearTimeout(countToastTimerRef.current);
+        setCountToastText(headerName);
+        countToastTimerRef.current = setTimeout(() => setCountToastText(''), 3000);
+    }, []);
     const [userFiles, setUserFiles] = useState<any[]>([]);
     const initialFetchAttempted = useRef(false);
 
@@ -174,6 +182,9 @@ const App: React.FC = () => {
                     setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
                     // Пересчёт включается сам, если в файле есть графа количества.
                     setCountMode(detected.countColIndex !== -1);
+                    if (detected.countColIndex !== -1) {
+                        flashCountToast(String(lastFile.headers[detected.countColIndex] ?? ''));
+                    }
                     // Облачный файл — исходных байтов нет, экспорт пойдёт по фолбэку.
                     originalBufferRef.current = null;
                     rowIndexMapRef.current = [];
@@ -290,6 +301,9 @@ const App: React.FC = () => {
         setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
         // Пересчёт включается сам, если в файле есть графа количества.
         setCountMode(detected.countColIndex !== -1);
+        if (detected.countColIndex !== -1) {
+            flashCountToast(String(newHeaders[detected.countColIndex] ?? ''));
+        }
         setKeyboardTarget('search');
         setCountFresh(true);
         headerRowNumberRef.current = pendingFile.headerRowNumber ?? 1;
@@ -571,11 +585,15 @@ const App: React.FC = () => {
         }
     }, [highlightMode, countMode, countColIndex]);
 
-    // Тап в пересчёте: рамка — на номенклатуру строки (или первую колонку,
-    // если номенклатура не найдена), ввод — в графу количества.
-    const handleCountSelect = useCallback((rowIndex: number) => {
+    // Тап в пересчёте: тап по самой графе — рамка на ней, тап в другом
+    // месте строки — рамка на номенклатуре. Ввод всегда в графу количества.
+    // Сюда же попадаем тапом по графе из обычного режима — пересчёт
+    // включается сам, без карандаша.
+    const handleCountSelect = useCallback((rowIndex: number, colIndex: number) => {
         if (countColIndex === null) return;
-        const ringCol = nomenColIndex ?? 0;
+        setCountMode(true);
+        setHighlightMode(false);
+        const ringCol = colIndex === countColIndex ? countColIndex : (nomenColIndex ?? 0);
         setSelectedCell({ row: rowIndex, col: ringCol });
         setLastTappedCell({ row: rowIndex, col: ringCol });
         setKeyboardTarget('cell');
@@ -958,6 +976,20 @@ const App: React.FC = () => {
         handleClearSearch();
     };
 
+    // Панель в режиме ввода в ячейку: поле поиска прячется, видно значение.
+    const cellInputActive = countMode && keyboardTarget === 'cell'
+        && selectedCell !== null && countColIndex !== null;
+    const cellDisplayValue = cellInputActive && selectedCell && countColIndex !== null
+        ? String(sheetData[selectedCell.row]?.[countColIndex] ?? '')
+        : '';
+    // Токен фокуса: каждая лупа инкрементит, SearchBar ставит фокус в поиск.
+    const [searchFocusToken, setSearchFocusToken] = useState(0);
+    const handleShowSearch = () => {
+        setKeyboardTarget('search');
+        setKeyboardVisible(true);
+        setSearchFocusToken(t => t + 1);
+    };
+
     const resetApp = () => {
         setFileName(null);
         setHeaders([]);
@@ -978,6 +1010,7 @@ const App: React.FC = () => {
         setNomenColIndex(null);
         setKeyboardTarget('search');
         setCountFresh(true);
+        setCountToastText('');
         originalBufferRef.current = null;
         rowIndexMapRef.current = [];
         colIndexMapRef.current = [];
@@ -1188,6 +1221,13 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
+            {fileName && countToastText && (
+                <div className="position-fixed top-0 start-50 translate-middle-x z-1050 pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.5rem)' }}>
+                    <div className="d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-success text-success">
+                        <span>Режим пересчёта: {countToastText} ✓</span>
+                    </div>
+                </div>
+            )}
             {appMode === 'search' && fileName && (
                 <SearchBar
                     searchQuery={searchQuery}
@@ -1205,6 +1245,10 @@ const App: React.FC = () => {
                     filter={filter}
                     setFilter={setFilter}
                     onReset={resetApp}
+                    cellInputActive={cellInputActive}
+                    cellDisplayValue={cellDisplayValue}
+                    onShowSearch={handleShowSearch}
+                    focusSearchToken={searchFocusToken}
                 >
                     {isKeyboardVisible && (
                         <NumericKeyboard

@@ -22,7 +22,7 @@ interface DataTableProps {
     countMode: boolean;
     countColIndex: number | null;
     lastTappedCell: { row: number; col: number; } | null;
-    onCountSelect: (rowIndex: number) => void;
+    onCountSelect: (rowIndex: number, colIndex: number) => void;
 }
 
 const REVISION_GROUP_PREFIX = 'Ревизионная группа';
@@ -253,11 +253,15 @@ const DataTable: React.FC<DataTableProps> = ({
                                                 key={colIndex}
                                                 onClick={() => {
                                                     if (countMode) {
-                                                        // В пересчёте тап выбирает строку (рамка на
-                                                        // номенклатуру ставит App), закрашивания нет.
-                                                        onCountSelect(originalIndex);
+                                                        // В пересчёте тап выбирает строку (рамку
+                                                        // ставит App), закрашивания нет.
+                                                        onCountSelect(originalIndex, colIndex);
                                                     } else if (highlightMode) {
                                                         onCellClick(originalIndex, colIndex);
+                                                    } else if (countColIndex !== null && colIndex === countColIndex) {
+                                                        // Тап по графе количества из обычного режима —
+                                                        // автовход в пересчёт без карандаша.
+                                                        onCountSelect(originalIndex, colIndex);
                                                     } else {
                                                         onCellSelect(originalIndex, colIndex);
                                                     }
