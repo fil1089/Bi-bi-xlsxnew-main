@@ -56,6 +56,12 @@ def get_ssh_pass():
     pw = os.environ.get('BIBI_SSH_PASS')
     if pw:
         return pw
+    # Локальный gitignored-файл проекта (см. .deploy_pass.local).
+    local_pass = BASE_DIR / '.deploy_pass.local'
+    if local_pass.exists():
+        pw = local_pass.read_text(encoding='utf-8').strip()
+        if pw:
+            return pw
     return getpass.getpass(f'SSH password for {SSH_USER}@{HOST}: ')
 
 
