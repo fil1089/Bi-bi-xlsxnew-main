@@ -705,17 +705,31 @@ const App: React.FC = () => {
             });
 
             // Читаемый вид ячеек: шаблоны из 1С несут зачёркнутый курсивный
-            // шрифт, в приложении его не видно, а после скачивания лист
-            // нечитаем. Нормализуем: без strike/italic, размер 10.5,
-            // тонкая рамка. Bold/цвет/имя шрифта не трогаем.
+            // жирный шрифт, в приложении его не видно, а после скачивания
+            // лист нечитаем. Нормализуем: обычный шрифт 10.5, перенос по
+            // словам, тонкая рамка. Цвет/имя шрифта не трогаем.
             const thinBorder = () => {
                 const side = { style: 'thin' as const };
                 return { top: side, left: side, bottom: side, right: side };
             };
             const normalizeCellLook = (cell: any, borders = true) => {
                 const f: any = cell.font || {};
-                cell.font = { ...f, name: f.name || 'Arial', size: 10.5, italic: false, strike: false };
+                cell.font = { ...f, name: f.name || 'Arial', size: 10.5, bold: false, italic: false, strike: false };
+                cell.alignment = { ...(cell.alignment || {}), wrapText: true };
                 if (borders) cell.border = thinBorder();
+            };
+            // Ширина колонок под содержимое (уже — не трогаем, только шире).
+            const fitColumnWidths = (ws: any, getExcelCol: (visual: number) => number, nCols: number) => {
+                for (let v = 0; v < nCols; v++) {
+                    let maxLen = String(headers[v] ?? '').length;
+                    sheetData.forEach(row => {
+                        const len = String(row?.[v] ?? '').length;
+                        if (len > maxLen) maxLen = len;
+                    });
+                    const fitted = Math.min(70, Math.max(10, maxLen * 1.25 + 2));
+                    const col = ws.getColumn(getExcelCol(v));
+                    if (!col.width || col.width < fitted) col.width = fitted;
+                }
             };
 
             if (originalBufferRef.current) {
@@ -758,6 +772,7 @@ const App: React.FC = () => {
                 worksheet.eachRow((row: any) => {
                     row.eachCell((cell: any) => normalizeCellLook(cell, false));
                 });
+                fitColumnWidths(worksheet, dataColExcel, colIndexMapRef.current.length);
                 worksheet.eachRow((row: any, rowNumber: number) => {
                     if (rowNumber <= headerRowNum) return;
                     row.eachCell((cell: any) => {
@@ -846,6 +861,7 @@ const App: React.FC = () => {
                             normalizeCellLook(worksheet.getCell(er, ec));
                         }
                     }
+                    fitColumnWidths(worksheet, (v) => v + 1, headers.length);
                 }
             }
 
