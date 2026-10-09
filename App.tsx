@@ -12,7 +12,7 @@ import { BiBiLogo } from './components/BiBiLogo';
 import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
-import { calculateAutoWidths, detectCountColumns, toExcelCellValue, parseCountNumber, BUILD_ID } from './lib/utils';
+import { calculateAutoWidths, detectCountColumns, toExcelCellValue, parseCountNumber } from './lib/utils';
 import { SheetData, SheetRow, HighlightedCells, CellNotes, FilterType } from './types';
 import * as ExcelJSImport from 'exceljs';
 
@@ -29,13 +29,6 @@ type NoteEditorState = {
 
 const REVISION_GROUP_PREFIX = 'Ревизионная группа';
 
-const isDebugOverlay = (): boolean => {
-    try {
-        return new URLSearchParams(window.location.search).get('debug') === '1';
-    } catch {
-        return false;
-    }
-};
 
 const App: React.FC = () => {
     // Auth state
@@ -1136,14 +1129,6 @@ const App: React.FC = () => {
         }
     };
 
-    // Временный дебаг: что видит детект графы для загруженного файла.
-    useEffect(() => {
-        if (!fileName) return;
-        console.info('[bi-bi]', BUILD_ID, {
-            headers, countColIndex, nomenColIndex, countMode, highlightMode,
-        });
-    }, [fileName]); // eslint-disable-line react-hooks/exhaustive-deps
-
     const renderContent = () => {
         if (loading) {
             return <div className="d-flex align-items-center justify-content-center h-100"><p className="fs-5 text-gray-300">Обработка файла...</p></div>;
@@ -1244,16 +1229,6 @@ const App: React.FC = () => {
             )}
 
             {renderContent()}
-            {isDebugOverlay() && (
-                <div className="position-fixed top-0 start-0 z-1050 bg-black bg-opacity-75 border border-warning rounded m-2 p-2 small font-monospace text-warning overflow-auto" style={{ maxWidth: '92vw', maxHeight: '38vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                    build: {BUILD_ID}{'\n'}
-                    file: {fileName ?? '—'}{'\n'}
-                    headers: {JSON.stringify(headers)}{'\n'}
-                    countCol: {String(countColIndex)} nomenCol: {String(nomenColIndex)}{'\n'}
-                    countMode: {String(countMode)} highlight: {String(highlightMode)} target: {keyboardTarget}{'\n'}
-                    selected: {JSON.stringify(selectedCell)}
-                </div>
-            )}
             {appMode === 'search' && noteEditorState.visible && (
                 <NoteEditor
                     note={notes[`${noteEditorState.rowIndex}-${noteEditorState.colIndex}`] || ''}
