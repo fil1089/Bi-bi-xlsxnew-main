@@ -815,13 +815,20 @@ const App: React.FC = () => {
                     });
                 }
 
-                // Посчитанные отклонения — значения и формат.
+                // Посчитанные отклонения — значения, формат и автозаливка
+                // (минус — красная, плюс — зелёная, ноль — без заливки;
+                // ручная подсветка ячейки важнее автозаливки).
                 if (devColIndex !== null && devColIndex >= 0) {
                     sheetData.forEach((row, r) => {
                         if (!row) return;
-                        worksheet.getCell(dataRowExcel(r), dataColExcel(devColIndex)).value =
-                            toExcelCellValue(row[devColIndex] ?? null);
+                        const devCell = worksheet.getCell(dataRowExcel(r), dataColExcel(devColIndex));
+                        devCell.value = toExcelCellValue(row[devColIndex] ?? null);
                         copyFormatFromUchet(r, devColIndex);
+                        const dvRaw = row[devColIndex];
+                        const dvNum = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
+                        if (dvNum !== null && dvNum !== 0 && !highlightedCells[`${r}-${devColIndex}`]) {
+                            devCell.fill = fillFor(dvNum < 0 ? 'red' : 'green');
+                        }
                     });
                 }
             } else {
@@ -834,12 +841,20 @@ const App: React.FC = () => {
                 sheetData.forEach((row, rowIndex) => {
                     const excelRow = worksheet.addRow(toExportRow(row).map(c => c ?? null));
 
+                    let rowDv: number | null = null;
+                    if (devColIndex !== null && devColIndex >= 0 && row) {
+                        const dvRaw = row[devColIndex];
+                        rowDv = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
+                    }
+
                     row.forEach((cell, colIndex) => {
                         const cellKey = `${rowIndex}-${colIndex}`;
                         const excelCell = excelRow.getCell(colIndex + 1);
 
                         if (highlightedCells[cellKey]) {
                             excelCell.fill = fillFor(highlightedCells[cellKey]);
+                        } else if (colIndex === devColIndex && rowDv !== null && rowDv !== 0) {
+                            excelCell.fill = fillFor(rowDv < 0 ? 'red' : 'green');
                         }
                         if (notes[cellKey]) {
                             excelCell.note = notes[cellKey];
@@ -956,6 +971,59 @@ const App: React.FC = () => {
                             noteWorksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
                         }
                     }
+                }
+            }
+
+            // Лист «С отклонениями»: строки с ненулевым отклонением целиком,
+            // со всеми значениями. Ячейка отклонения красится как в основе.
+            if (devColIndex !== null && devColIndex >= 0) {
+                const devRowIndexes: number[] = [];
+                sheetData.forEach((row, r) => {
+                    if (!row) return;
+                    const dvRaw = row[devColIndex];
+                    const dvNum = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
+                    if (dvNum !== null && dvNum !== 0) devRowIndexes.push(r);
+                });
+
+                if (devRowIndexes.length > 0) {
+                    const devWorksheet = workbook.addWorksheet('С отклонениями');
+                    devWorksheet.addRow(headers.map(h => h ?? ''));
+                    let lastAddedSubheaderIndex = -1;
+
+                    devRowIndexes.forEach(rowIndex => {
+                        let subheaderIndex = -1;
+                        for (let i = revisionGroupIndices.length - 1; i >= 0; i--) {
+                            if (revisionGroupIndices[i] <= rowIndex) {
+                                subheaderIndex = revisionGroupIndices[i];
+                                break;
+                            }
+                        }
+
+                        if (subheaderIndex !== -1 && subheaderIndex !== lastAddedSubheaderIndex) {
+                            const subRow = devWorksheet.addRow(toExportRow(sheetData[subheaderIndex]).map(c => c ?? null));
+                            subRow.eachCell((cell: any) => normalizeCellLook(cell));
+                            lastAddedSubheaderIndex = subheaderIndex;
+                        }
+
+                        const dvRaw = sheetData[rowIndex][devColIndex];
+                        const dvNum = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
+                        const newRow = devWorksheet.addRow(toExportRow(sheetData[rowIndex]).map(c => c ?? null));
+                        newRow.eachCell((cell: any, colNumber: number) => {
+                            const colIndex = colNumber - 1;
+                            normalizeCellLook(cell);
+                            const key = `${rowIndex}-${colIndex}`;
+                            if (highlightedCells[key]) {
+                                cell.fill = fillFor(highlightedCells[key]);
+                            } else if (colIndex === devColIndex && dvNum !== null && dvNum !== 0) {
+                                cell.fill = fillFor(dvNum < 0 ? 'red' : 'green');
+                            }
+                            if (notes[key]) {
+                                cell.note = notes[key];
+                            }
+                        });
+                    });
+
+                    fitColumnWidths(devWorksheet, (v) => v + 1, headers.length);
                 }
             }
 
