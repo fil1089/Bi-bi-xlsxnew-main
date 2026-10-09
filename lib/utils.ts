@@ -182,10 +182,93 @@ export const readInitialHighlights = (worksheet: any, headerRowNumber: number = 
 };
 
 /**
- * Определяет, является ли заливка ячейки «красной» или «зелёной» подсветкой
- * (по той же эвристике, что и при чтении файла). Используется и при чтении,
- * и при экспорте — чтобы понять, какие исходные заливки считать подсветкой.
+ * Режим пересчёта: поиск колонки «По факту» и её перестановка
+ * сразу после «Номенклатуры». Все функции чистые (без мутаций входа).
  */
+export const COUNT_COLUMN_HINT = 'факт';
+export const NOMENCLATURE_COLUMN_HINT = 'номенклатура';
+
+/** Индекс первой колонки, чьё название содержит hint (регистр не важен), −1 если нет. */
+export const findColumnIndex = (headers: string[], hint: string): number =>
+    headers.findIndex(h => String(h ?? '').toLowerCase().includes(hint));
+
+export interface CountColumnLayout {
+    headers: string[];
+    data: SheetData;
+    notes: CellNotes;
+    highlightedCells: HighlightedCells;
+    columnWidths: number[];
+    /** Визуальный индекс -> исходный (кладётся в colIndexMapRef для экспорта). */
+    colPerm: number[];
+    /** Визуальный индекс графы пересчёта, −1 если колонки нет. */
+    countColIndex: number;
+    /** Визуальный индекс номенклатуры, −1 если колонки нет. */
+    nomenColIndex: number;
+}
+
+const remapColumnKeys = <T,>(obj: { [key: string]: T }, newVisualOfOriginal: number[]): { [key: string]: T } => {
+    const remapped: { [key: string]: T } = {};
+    Object.keys(obj).forEach(key => {
+        const [r, c] = key.split('-').map(Number);
+        remapped[`${r}-${newVisualOfOriginal[c] ?? c}`] = obj[key];
+    });
+    return remapped;
+};
+
+/**
+ * Если в заголовках есть колонка «факт» и она стоит не сразу после
+ * номенклатуры — перемещает её туда (заголовки, строки, ширины, ключи
+ * заметок/подсветок). Идемпотентна: повторный вызов ничего не меняет.
+ */
+export const layoutCountColumn = (
+    headers: string[],
+    data: SheetData,
+    notes: CellNotes,
+    highlightedCells: HighlightedCells,
+    columnWidths: number[],
+): CountColumnLayout => {
+    const identity = headers.map((_, i) => i);
+    const foundCount = findColumnIndex(headers, COUNT_COLUMN_HINT);
+    const foundNomen = findColumnIndex(headers, NOMENCLATURE_COLUMN_HINT);
+    const asIs = (): CountColumnLayout => ({
+        headers, data, notes, highlightedCells, columnWidths,
+        colPerm: identity, countColIndex: foundCount, nomenColIndex: foundNomen,
+    });
+
+    if (foundCount === -1 || foundNomen === -1 || foundCount === foundNomen) return asIs();
+    const target = foundNomen + 1;
+    if (foundCount === target) return asIs();
+
+    // Новый визуальный порядок: order[newVisual] = original.
+    const order = [...identity];
+    const [moved] = order.splice(foundCount, 1);
+    const insertAt = foundCount < target ? target - 1 : target;
+    order.splice(insertAt, 0, moved);
+    const newVisualOfOriginal = identity.map(orig => order.indexOf(orig));
+
+    return {
+        headers: order.map(oi => headers[oi]),
+        data: data.map(row => (row ? order.map(oi => row[oi] ?? null) : row)),
+        notes: remapColumnKeys(notes, newVisualOfOriginal),
+        highlightedCells: remapColumnKeys(highlightedCells, newVisualOfOriginal),
+        columnWidths: columnWidths.length > 0 ? order.map(oi => columnWidths[oi]) : [],
+        colPerm: order,
+        countColIndex: order.indexOf(foundCount),
+        nomenColIndex: order.indexOf(foundNomen),
+    };
+};
+
+/**
+ * Значение ячейки для записи в ExcelJS: числовые строки -> Number,
+ * пустые -> null (очистить ячейку), остальное как есть.
+ */
+export const toExcelCellValue = (value: string | number | boolean | null): string | number | boolean | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (trimmed === '') return null;
+    return isNaN(Number(trimmed)) ? value : Number(trimmed);
+};
 export const detectHighlightColor = (fill: any): 'red' | 'green' | null => {
     if (!fill || fill.type !== 'pattern' || fill.pattern !== 'solid') return null;
 

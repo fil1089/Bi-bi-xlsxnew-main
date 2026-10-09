@@ -19,6 +19,10 @@ interface DataTableProps {
     highlightMode: boolean;
     scrollToRowIndex: number | null;
     isKeyboardVisible: boolean;
+    countMode: boolean;
+    countColIndex: number | null;
+    lastTappedCell: { row: number; col: number; } | null;
+    onCountSelect: (rowIndex: number) => void;
 }
 
 const REVISION_GROUP_PREFIX = 'Ревизионная группа';
@@ -39,6 +43,10 @@ const DataTable: React.FC<DataTableProps> = ({
     highlightMode,
     scrollToRowIndex,
     isKeyboardVisible,
+    countMode,
+    countColIndex,
+    lastTappedCell,
+    onCountSelect,
 }) => {
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const resizingColumnRef = useRef<{ index: number; startX: number; startWidth: number; } | null>(null);
@@ -135,6 +143,7 @@ const DataTable: React.FC<DataTableProps> = ({
                                 <th
                                     key={index}
                                     className={`relative p-2 text-start small fw-bold text-gray-300 border-bottom border-end border-secondary whitespace-nowrap group transition-colors ${stickyClass} ${highlightClass}`}
+                                    style={countMode && countColIndex === index ? { backgroundColor: '#14532d' } : undefined}
                                 >
                                     <div
                                         className={`truncate pe-4 ${cursorClass}`}
@@ -214,7 +223,12 @@ const DataTable: React.FC<DataTableProps> = ({
                                         const highlightColor = highlightedCells[cellKey];
                                         const hasNote = !!notes[cellKey];
                                         const isFirstColumn = colIndex === 0;
-                                        const isSelected = !highlightMode && selectedCell?.row === originalIndex && selectedCell?.col === colIndex;
+                                        // Рамка видна во всех режимах: на выбранной ячейке,
+                                        // а в подсветке — ещё и на последнем тапнутом месте.
+                                        const isSelected = selectedCell?.row === originalIndex && selectedCell?.col === colIndex;
+                                        const isLastTapped = highlightMode && !countMode
+                                            && lastTappedCell?.row === originalIndex && lastTappedCell?.col === colIndex;
+                                        const showRing = isSelected || isLastTapped;
 
                                         const classNames = ['position-relative p-2 small text-gray-200 border-bottom border-end border-secondary whitespace-nowrap select-none touch-manipulation transition-colors cursor-pointer'];
 
@@ -238,7 +252,11 @@ const DataTable: React.FC<DataTableProps> = ({
                                             <td
                                                 key={colIndex}
                                                 onClick={() => {
-                                                    if (highlightMode) {
+                                                    if (countMode) {
+                                                        // В пересчёте тап выбирает строку (рамка на
+                                                        // номенклатуру ставит App), закрашивания нет.
+                                                        onCountSelect(originalIndex);
+                                                    } else if (highlightMode) {
                                                         onCellClick(originalIndex, colIndex);
                                                     } else {
                                                         onCellSelect(originalIndex, colIndex);
@@ -247,7 +265,7 @@ const DataTable: React.FC<DataTableProps> = ({
                                                 className={classNames.join(' ')}
                                                 style={{ touchAction: 'manipulation' }}
                                             >
-                                                {isSelected && <div className="selection-ring" />}
+                                                {showRing && <div className="selection-ring" />}
                                                 {hasNote && <div className="position-absolute top-0 end-0 w-0 h-0 border-start-8 border-start-transparent border-top-8 border-top-blue-500" style={{ borderLeft: '8px solid transparent', borderTop: '8px solid #3b82f6' }} title="Есть заметка"></div>}
                                                 <div className="truncate" title={String(cell ?? '')}>{String(cell ?? '')}</div>
                                             </td>

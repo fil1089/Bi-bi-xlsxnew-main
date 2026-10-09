@@ -12,7 +12,7 @@ import { BiBiLogo } from './components/BiBiLogo';
 import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
-import { calculateAutoWidths, detectHighlightColor } from './lib/utils';
+import { calculateAutoWidths, detectHighlightColor, layoutCountColumn, toExcelCellValue } from './lib/utils';
 import { SheetData, HighlightedCells, CellNotes, FilterType } from './types';
 import * as ExcelJSImport from 'exceljs';
 
@@ -87,6 +87,15 @@ const App: React.FC = () => {
     const [columnWidths, setColumnWidths] = useState<number[]>([]);
     const [isKeyboardVisible, setKeyboardVisible] = useState(false);
     const [highlightMode, setHighlightMode] = useState(false);
+    // Режим пересчёта: ввод количества в графу «По факту» вместо закрашивания.
+    const [countMode, setCountMode] = useState(false);
+    // Визуальные индексы графы пересчёта и номенклатуры (null — колонки нет).
+    const [countColIndex, setCountColIndex] = useState<number | null>(null);
+    const [nomenColIndex, setNomenColIndex] = useState<number | null>(null);
+    // Цель клавиатуры в пересчёте: поиск или ячейка «По факту».
+    const [keyboardTarget, setKeyboardTarget] = useState<'search' | 'cell'>('search');
+    // Первая цифра заменяет значение ячейки, следующие дописывают.
+    const [countFresh, setCountFresh] = useState(true);
 
     const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
     const [scrollToRowIndex, setScrollToRowIndex] = useState<number | null>(null);
@@ -145,12 +154,21 @@ const App: React.FC = () => {
                 // Automatically load the first one if we don't have a filename yet
                 if (data.length > 0 && !fileName) {
                     const lastFile = data[0];
-                    setHeaders(lastFile.headers);
-                    setSheetData(lastFile.sheet_data);
+                    // Графа «По факту» — сразу после номенклатуры (если есть).
+                    const layout = layoutCountColumn(
+                        lastFile.headers, lastFile.sheet_data,
+                        lastFile.notes || {}, lastFile.highlighted_cells || {}, [],
+                    );
+                    setHeaders(layout.headers);
+                    setSheetData(layout.data);
                     setFileName(lastFile.file_name);
-                    setHighlightedCells(lastFile.highlighted_cells || {});
-                    setNotes(lastFile.notes || {});
-                    setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
+                    setHighlightedCells(layout.highlightedCells);
+                    setNotes(layout.notes);
+                    setColumnWidths(calculateAutoWidths(layout.headers, layout.data));
+                    setCountColIndex(layout.countColIndex === -1 ? null : layout.countColIndex);
+                    setNomenColIndex(layout.nomenColIndex === -1 ? null : layout.nomenColIndex);
+                    // Пересчёт включается сам, если в файле есть графа «факт».
+                    setCountMode(layout.countColIndex !== -1);
                     // Облачный файл — исходных байтов нет, экспорт пойдёт по фолбэку.
                     originalBufferRef.current = null;
                     rowIndexMapRef.current = [];
@@ -241,25 +259,40 @@ const App: React.FC = () => {
         const newHeaders = pendingFile.headers || [];
         const newData = pendingFile.data || [];
 
-        setHeaders(newHeaders);
-        setSheetData(newData);
+        // Графа «По факту» — сразу после номенклатуры (если есть).
+        const layout = layoutCountColumn(
+            newHeaders, newData,
+            pendingFile.notes || {}, pendingFile.highlightedCells || {},
+            pendingFile.columnWidths || [],
+        );
+
+        setHeaders(layout.headers);
+        setSheetData(layout.data);
         setFileName(pendingFile.fileName);
 
-        setNotes(pendingFile.notes || {});
-        setHighlightedCells(pendingFile.highlightedCells || {});
+        setNotes(layout.notes);
+        setHighlightedCells(layout.highlightedCells);
 
         if (pendingFile.columnWidths && pendingFile.columnWidths.length > 0) {
-            setColumnWidths(pendingFile.columnWidths);
+            setColumnWidths(layout.columnWidths);
         } else {
-            setColumnWidths(calculateAutoWidths(newHeaders, newData));
+            setColumnWidths(calculateAutoWidths(layout.headers, layout.data));
         }
 
-        // Сохраняем исходные байты и инициализируем карты индексов «как есть».
+        // Сохраняем исходные байты и инициализируем карты индексов.
+        // Карта столбцов — перестановка layout (визуальный -> исходный),
+        // чтобы экспорт поверх оригинала попадал в те же колонки Excel.
         originalBufferRef.current = pendingFile.buffer ?? null;
-        origRowCountRef.current = newData.length;
-        origColCountRef.current = newHeaders.length;
-        rowIndexMapRef.current = newData.map((_, i) => i);
-        colIndexMapRef.current = newHeaders.map((_, i) => i);
+        origRowCountRef.current = layout.data.length;
+        origColCountRef.current = layout.headers.length;
+        rowIndexMapRef.current = layout.data.map((_, i) => i);
+        colIndexMapRef.current = layout.colPerm;
+        setCountColIndex(layout.countColIndex === -1 ? null : layout.countColIndex);
+        setNomenColIndex(layout.nomenColIndex === -1 ? null : layout.nomenColIndex);
+        // Пересчёт включается сам, если в файле есть графа «факт».
+        setCountMode(layout.countColIndex !== -1);
+        setKeyboardTarget('search');
+        setCountFresh(true);
         headerRowNumberRef.current = pendingFile.headerRowNumber ?? 1;
         colOffsetRef.current = pendingFile.colOffset ?? 0;
 
@@ -518,6 +551,71 @@ const App: React.FC = () => {
         });
     };
 
+    // Карандаш — цикл: выкл → подсветка (жёлтый) → пересчёт (зелёный) → выкл.
+    // Если графы «факт» в файле нет — только подсветка вкл/выкл, как раньше.
+    const handlePencilTap = useCallback(() => {
+        if (highlightMode) {
+            setHighlightMode(false);
+            if (countColIndex !== null) {
+                setCountMode(true);
+                setSelectedCell(null);
+                setLastTappedCell(null);
+                setKeyboardTarget('search');
+                setCountFresh(true);
+            }
+        } else if (countMode) {
+            setCountMode(false);
+            setSelectedCell(null);
+        } else {
+            setHighlightMode(true);
+            setSelectedCell(null);
+        }
+    }, [highlightMode, countMode, countColIndex]);
+
+    // Тап в пересчёте: рамка — на номенклатуру строки, ввод — в «По факту».
+    const handleCountSelect = useCallback((rowIndex: number) => {
+        if (countColIndex === null || nomenColIndex === null) return;
+        setSelectedCell({ row: rowIndex, col: nomenColIndex });
+        setLastTappedCell({ row: rowIndex, col: nomenColIndex });
+        setKeyboardTarget('cell');
+        setCountFresh(true);
+        setKeyboardVisible(true);
+    }, [countColIndex, nomenColIndex]);
+
+    const updateCountCell = (row: number, next: string) => {
+        if (countColIndex === null) return;
+        const col = countColIndex;
+        setSheetData(prev => prev.map((r, i) => {
+            if (i !== row || !r) return r;
+            const nextRow = [...r];
+            nextRow[col] = next;
+            return nextRow;
+        }));
+    };
+
+    // Первая цифра заменяет значение, следующие дописывают.
+    const handleCountKeyPress = (key: string) => {
+        if (selectedCell === null || countColIndex === null) return;
+        const current = countFresh
+            ? ''
+            : String(sheetData[selectedCell.row]?.[countColIndex] ?? '');
+        updateCountCell(selectedCell.row, `${current}${key}`);
+        setCountFresh(false);
+    };
+
+    const handleCountBackspace = () => {
+        if (selectedCell === null || countColIndex === null) return;
+        const current = String(sheetData[selectedCell.row]?.[countColIndex] ?? '');
+        updateCountCell(selectedCell.row, current.slice(0, -1));
+        setCountFresh(false);
+    };
+
+    const handleCountClear = () => {
+        if (selectedCell === null) return;
+        updateCountCell(selectedCell.row, '');
+        setCountFresh(true);
+    };
+
     const handleCellSelect = useCallback((rowIndex: number, colIndex: number) => {
         if (selectedCell && selectedCell.row === rowIndex && selectedCell.col === colIndex) {
             setSelectedCell(null);
@@ -529,9 +627,11 @@ const App: React.FC = () => {
     }, [selectedCell]);
 
     const handleRequestNoteEditor = () => {
-        // Используем последнюю тапнутую ячейку — работает и в режиме подсветки,
-        // где selectedCell не выставляется.
-        const target = selectedCell ?? lastTappedCell;
+        // В пересчёте заметка всегда идёт в «По факту» той же строки,
+        // хотя рамка стоит на номенклатуре.
+        const target = countMode && selectedCell && countColIndex !== null
+            ? { row: selectedCell.row, col: countColIndex }
+            : (selectedCell ?? lastTappedCell);
         if (target) {
             setNoteEditorState({ visible: true, rowIndex: target.row, colIndex: target.col });
         }
@@ -577,7 +677,10 @@ const App: React.FC = () => {
                 // Индекс данных (0-based) → Excel-строка = idx + headerRowNum + 1.
                 // Индекс столбца (0-based) → Excel-столбец = idx + 1 + colOff.
                 const dataRowExcel = (idx: number) => idx + headerRowNum + 1;
-                const dataColExcel = (idx: number) => idx + 1 + colOff;
+                // Визуальный индекс -> исходный через карту (учитывает
+                // перестановку «По факту» после номенклатуры при загрузке).
+                const dataColExcel = (visualIdx: number) =>
+                    (colIndexMapRef.current[visualIdx] ?? visualIdx) + 1 + colOff;
 
                 // 1. Вырезаем удалённые столбцы (от старших индексов к младшим).
                 const survivingCols = new Set(colIndexMapRef.current);
@@ -613,6 +716,16 @@ const App: React.FC = () => {
                     const [r, c] = key.split('-').map(Number);
                     worksheet.getCell(dataRowExcel(r), dataColExcel(c)).note = notes[key];
                 });
+
+                // Значения графы пересчёта, введённые в приложении
+                // (заливки и заметки значений не переносят).
+                if (countColIndex !== null && countColIndex >= 0) {
+                    sheetData.forEach((row, r) => {
+                        if (!row) return;
+                        worksheet.getCell(dataRowExcel(r), dataColExcel(countColIndex)).value =
+                            toExcelCellValue(row[countColIndex] ?? null);
+                    });
+                }
             } else {
                 // --- Фолбэк: исходных байтов нет (файл из облака) — собираем
                 // основной лист с нуля, как раньше. ---
@@ -816,15 +929,33 @@ const App: React.FC = () => {
     };
 
     const handleNumericKeyPress = (key: string) => {
+        // В пересчёте цифры идут в «По факту» выбранной строки, а не в поиск.
+        if (countMode && keyboardTarget === 'cell') {
+            handleCountKeyPress(key);
+            return;
+        }
         setSearchQuery(prev => prev + key);
     };
 
     const handleNumericBackspace = () => {
+        if (countMode && keyboardTarget === 'cell') {
+            handleCountBackspace();
+            return;
+        }
         setSearchQuery(prev => prev.slice(0, -1));
     };
 
     const handleClearSearch = () => {
         setSearchQuery('');
+    };
+
+    // Корзина: в пересчёте очищает ячейку «По факту», иначе — поиск.
+    const handleClearKey = () => {
+        if (countMode && keyboardTarget === 'cell') {
+            handleCountClear();
+            return;
+        }
+        handleClearSearch();
     };
 
     const resetApp = () => {
@@ -842,6 +973,11 @@ const App: React.FC = () => {
         setKeyboardVisible(false);
         setHighlightedHeaderIndices(new Set());
         setHighlightMode(false);
+        setCountMode(false);
+        setCountColIndex(null);
+        setNomenColIndex(null);
+        setKeyboardTarget('search');
+        setCountFresh(true);
         originalBufferRef.current = null;
         rowIndexMapRef.current = [];
         colIndexMapRef.current = [];
@@ -949,6 +1085,10 @@ const App: React.FC = () => {
                         highlightMode={highlightMode}
                         scrollToRowIndex={scrollToRowIndex}
                         isKeyboardVisible={isKeyboardVisible}
+                        countMode={countMode}
+                        countColIndex={countColIndex}
+                        lastTappedCell={lastTappedCell}
+                        onCountSelect={handleCountSelect}
                     />
                 </div>
             );
@@ -1034,7 +1174,12 @@ const App: React.FC = () => {
                 <SearchBar
                     searchQuery={searchQuery}
                     onClear={handleClearSearch}
-                    onFocus={() => setKeyboardVisible(true)}
+                    onFocus={() => {
+                        setKeyboardVisible(true);
+                        // Тап по полю поиска в пересчёте временно переключает
+                        // клавиатуру на поиск; тап по строке вернёт её в ячейку.
+                        setKeyboardTarget('search');
+                    }}
                     isKeyboardVisible={isKeyboardVisible}
                     searchMatchCount={searchMatches.length}
                     currentMatchIndex={currentMatchIndex}
@@ -1048,12 +1193,10 @@ const App: React.FC = () => {
                             onKeyPress={handleNumericKeyPress}
                             onBackspace={handleNumericBackspace}
                             onDone={() => setKeyboardVisible(false)}
-                            onClear={handleClearSearch}
+                            onClear={handleClearKey}
                             highlightMode={highlightMode}
-                            onHighlightToggle={() => {
-                                setHighlightMode(prev => !prev);
-                                setSelectedCell(null);
-                            }}
+                            countMode={countMode}
+                            onPencilTap={handlePencilTap}
                             onAddNote={handleRequestNoteEditor}
                             isCellSelected={!!(selectedCell ?? lastTappedCell)}
                             onReset={resetApp}
