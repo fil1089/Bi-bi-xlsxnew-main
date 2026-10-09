@@ -986,7 +986,7 @@ const App: React.FC = () => {
                 });
 
                 if (devRowIndexes.length > 0) {
-                    const devWorksheet = workbook.addWorksheet('С отклонениями');
+                    const devWorksheet = workbook.addWorksheet('Отклонения');
                     devWorksheet.addRow(headers.map(h => h ?? ''));
                     let lastAddedSubheaderIndex = -1;
 
