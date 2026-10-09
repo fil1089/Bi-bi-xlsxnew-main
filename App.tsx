@@ -116,14 +116,6 @@ const App: React.FC = () => {
     // Короткое подтверждение ручного сохранения на сервер.
     const [savedToast, setSavedToast] = useState(false);
     const savedToastTimerRef = useRef<NodeJS.Timeout | null>(null);
-    // Подтверждение автовключения пересчёта («видимая зелень»).
-    const [countToastText, setCountToastText] = useState('');
-    const countToastTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const flashCountToast = useCallback((headerName: string) => {
-        if (countToastTimerRef.current) clearTimeout(countToastTimerRef.current);
-        setCountToastText(headerName);
-        countToastTimerRef.current = setTimeout(() => setCountToastText(''), 3000);
-    }, []);
     const [userFiles, setUserFiles] = useState<any[]>([]);
     const initialFetchAttempted = useRef(false);
 
@@ -180,11 +172,9 @@ const App: React.FC = () => {
                     setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
                     setCountColIndex(detected.countColIndex === -1 ? null : detected.countColIndex);
                     setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
-                    // Пересчёт включается сам, если в файле есть графа количества.
-                    setCountMode(detected.countColIndex !== -1);
-                    if (detected.countColIndex !== -1) {
-                        flashCountToast(String(lastFile.headers[detected.countColIndex] ?? ''));
-                    }
+                    // Пересчёт НЕ включается сам: карандаш по умолчанию неактивен,
+                    // вход — тапом по графе или зелёным карандашом.
+                    setCountMode(false);
                     // Облачный файл — исходных байтов нет, экспорт пойдёт по фолбэку.
                     originalBufferRef.current = null;
                     rowIndexMapRef.current = [];
@@ -299,11 +289,9 @@ const App: React.FC = () => {
         colIndexMapRef.current = newHeaders.map((_, i) => i);
         setCountColIndex(detected.countColIndex === -1 ? null : detected.countColIndex);
         setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
-        // Пересчёт включается сам, если в файле есть графа количества.
-        setCountMode(detected.countColIndex !== -1);
-        if (detected.countColIndex !== -1) {
-            flashCountToast(String(newHeaders[detected.countColIndex] ?? ''));
-        }
+        // Пересчёт НЕ включается сам: карандаш по умолчанию неактивен,
+        // вход — тапом по графе или зелёным карандашом.
+        setCountMode(false);
         setKeyboardTarget('search');
         setCountFresh(true);
         headerRowNumberRef.current = pendingFile.headerRowNumber ?? 1;
@@ -1010,7 +998,6 @@ const App: React.FC = () => {
         setNomenColIndex(null);
         setKeyboardTarget('search');
         setCountFresh(true);
-        setCountToastText('');
         originalBufferRef.current = null;
         rowIndexMapRef.current = [];
         colIndexMapRef.current = [];
@@ -1218,13 +1205,6 @@ const App: React.FC = () => {
                     <div className="d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-success text-success">
                         <CloudIcon style={{ width: '1rem', height: '1rem' }} />
                         <span>Сохранено ✓</span>
-                    </div>
-                </div>
-            )}
-            {fileName && countToastText && (
-                <div className="position-fixed top-0 start-50 translate-middle-x z-1050 pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 2.5rem)' }}>
-                    <div className="d-flex align-items-center gap-1 small bg-black bg-opacity-75 px-2 py-1 rounded shadow-sm border border-success text-success">
-                        <span>Режим пересчёта: {countToastText} ✓</span>
                     </div>
                 </div>
             )}
