@@ -733,7 +733,15 @@ const App: React.FC = () => {
 
                 // 3. Снимаем устаревшие подсветки/заметки со строк данных,
                 // чтобы синхронизировать с текущим состоянием (учесть снятия).
+                // Плюс снимаем strike со шрифтов: шаблоны из 1С несут
+                // зачёркнутый шрифт на ячейках, в приложении его не видно,
+                // а после скачивания весь лист перечёркнут. Остальное
+                // (bold/italic/размер/цвет) не трогаем.
                 worksheet.eachRow((row: any, rowNumber: number) => {
+                    row.eachCell((cell: any) => {
+                        const f: any = cell.font;
+                        if (f && f.strike) cell.font = { ...f, strike: false };
+                    });
                     if (rowNumber <= headerRowNum) return;
                     row.eachCell((cell: any) => {
                         if (detectHighlightColor(cell.fill)) {
