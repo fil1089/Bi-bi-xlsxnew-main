@@ -738,6 +738,10 @@ const App: React.FC = () => {
                 // числовые форматы, формулы и ширины исходного файла. ---
                 await workbook.xlsx.load(originalBufferRef.current);
                 const worksheet = workbook.worksheets[0];
+                // Первая вкладка — всегда «Основной лист», а не имя из шаблона.
+                if (!workbook.worksheets.some((ws, i) => i > 0 && ws.name === 'Основной лист')) {
+                    worksheet.name = 'Основной лист';
+                }
 
                 const headerRowNum = headerRowNumberRef.current; // 1-based строка заголовков
                 const colOff = colOffsetRef.current;             // ведущие пустые столбцы
