@@ -35,6 +35,10 @@
   background-color: #ffc107 !important;
 }
 
+.bg-success {
+  background-color: #198754 !important;
+}
+
 .text-gray-100 {
   color: #f3f4f6 !important;
 }
