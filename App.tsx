@@ -704,6 +704,20 @@ const App: React.FC = () => {
                 fgColor: { argb: color === 'green' ? 'FF00B050' : 'FFFF0000' },
             });
 
+            // Читаемый вид ячеек: шаблоны из 1С несут зачёркнутый курсивный
+            // шрифт, в приложении его не видно, а после скачивания лист
+            // нечитаем. Нормализуем: без strike/italic, размер 10.5,
+            // тонкая рамка. Bold/цвет/имя шрифта не трогаем.
+            const thinBorder = () => {
+                const side = { style: 'thin' as const };
+                return { top: side, left: side, bottom: side, right: side };
+            };
+            const normalizeCellLook = (cell: any, borders = true) => {
+                const f: any = cell.font || {};
+                cell.font = { ...f, name: f.name || 'Arial', size: 10.5, italic: false, strike: false };
+                if (borders) cell.border = thinBorder();
+            };
+
             if (originalBufferRef.current) {
                 // --- Экспорт ПОВЕРХ оригинала: сохраняем шрифты, границы,
                 // числовые форматы, формулы и ширины исходного файла. ---
@@ -733,15 +747,18 @@ const App: React.FC = () => {
 
                 // 3. Снимаем устаревшие подсветки/заметки со строк данных,
                 // чтобы синхронизировать с текущим состоянием (учесть снятия).
-                // Плюс снимаем strike со шрифтов: шаблоны из 1С несут
-                // зачёркнутый шрифт на ячейках, в приложении его не видно,
-                // а после скачивания весь лист перечёркнут. Остальное
-                // (bold/italic/размер/цвет) не трогаем.
+                // Плюс нормализуем вид шапки и строк данных (шрифт, рамки).
+                const lastDataRow = headerRowNum + rowIndexMapRef.current.length;
+                for (let er = headerRowNum; er <= lastDataRow; er++) {
+                    for (let v = 0; v < colIndexMapRef.current.length; v++) {
+                        normalizeCellLook(worksheet.getCell(er, dataColExcel(v)));
+                    }
+                }
+                // Зачистка шрифтов за пределами таблицы (рамки только в ней).
+                worksheet.eachRow((row: any) => {
+                    row.eachCell((cell: any) => normalizeCellLook(cell, false));
+                });
                 worksheet.eachRow((row: any, rowNumber: number) => {
-                    row.eachCell((cell: any) => {
-                        const f: any = cell.font;
-                        if (f && f.strike) cell.font = { ...f, strike: false };
-                    });
                     if (rowNumber <= headerRowNum) return;
                     row.eachCell((cell: any) => {
                         if (detectHighlightColor(cell.fill)) {
@@ -821,6 +838,12 @@ const App: React.FC = () => {
                             worksheet.getColumn(1).width = 5;
                         } else {
                             worksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
+                        }
+                    }
+                    // Тот же читаемый вид, что и поверх оригинала.
+                    for (let er = 1; er <= sheetData.length + 1; er++) {
+                        for (let ec = 1; ec <= headers.length; ec++) {
+                            normalizeCellLook(worksheet.getCell(er, ec));
                         }
                     }
                 }
