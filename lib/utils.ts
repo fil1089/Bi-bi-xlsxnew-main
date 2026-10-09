@@ -2,7 +2,7 @@ import { SheetData, HighlightedCells, CellNotes } from "../types";
 
 // Маркер сборки: виден в титуле карандаша и дебаг-плашке (?debug=1),
 // чтобы за секунду понимать, какой код выполняется в браузере.
-export const BUILD_ID = '2026-10-09-count-v7';
+export const BUILD_ID = '2026-10-09-count-v8';
 
 /**
  * Определяет положение строки заголовков и число ведущих пустых столбцов.
@@ -192,10 +192,12 @@ export const readInitialHighlights = (worksheet: any, headerRowNumber: number = 
  */
 export const COUNT_COLUMN_HINTS = ['факт', 'кол-во', 'количество'];
 export const NOMENCLATURE_COLUMN_HINT = 'номенклатура';
+export const UCHET_COLUMN_HINT = 'учет';
+export const DEVIATION_COLUMN_HINT = 'отклон';
 
-/** Нормализация заголовка для сравнения: trim, нижний регистр, схлопывание пробелов (включая nbsp). */
+/** Нормализация заголовка для сравнения: trim, нижний регистр, ё→е, схлопывание пробелов (включая nbsp). */
 export const normalizeHeader = (h: unknown): string =>
-    String(h ?? '').toLowerCase().replace(/[\s\u00a0]+/g, ' ').trim();
+    String(h ?? '').toLowerCase().replace(/ё/g, 'е').replace(/[\s\u00a0]+/g, ' ').trim();
 
 /** Индекс первой колонки, чьё название содержит hint (регистр/пробелы не важны), −1 если нет. */
 export const findColumnIndex = (headers: string[], hint: string): number => {
@@ -208,6 +210,10 @@ export interface CountColumns {
     countColIndex: number;
     /** Визуальный индекс номенклатуры, −1 если колонки нет. */
     nomenColIndex: number;
+    /** Визуальный индекс «По учёту», −1 если колонки нет. */
+    uchetColIndex: number;
+    /** Визуальный индекс «Отклонение», −1 если колонки нет. */
+    devColIndex: number;
 }
 
 /** Первая подходящая подсказка из COUNT_COLUMN_HINTS, иначе −1. */
@@ -217,7 +223,26 @@ export const detectCountColumns = (headers: string[]): CountColumns => {
         countColIndex = findColumnIndex(headers, hint);
         if (countColIndex !== -1) break;
     }
-    return { countColIndex, nomenColIndex: findColumnIndex(headers, NOMENCLATURE_COLUMN_HINT) };
+    return {
+        countColIndex,
+        nomenColIndex: findColumnIndex(headers, NOMENCLATURE_COLUMN_HINT),
+        uchetColIndex: findColumnIndex(headers, UCHET_COLUMN_HINT),
+        devColIndex: findColumnIndex(headers, DEVIATION_COLUMN_HINT),
+    };
+};
+
+/**
+ * Число из значения ячейки для пересчёта (понимает decimal-запятую).
+ * null — не число (пусто или текст).
+ */
+export const parseCountNumber = (value: string | number | boolean | null): number | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return isNaN(value) ? null : value;
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim().replace(',', '.');
+    if (trimmed === '') return null;
+    const num = Number(trimmed);
+    return isNaN(num) ? null : num;
 };
 
 /**

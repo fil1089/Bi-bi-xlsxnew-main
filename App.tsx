@@ -12,8 +12,8 @@ import { BiBiLogo } from './components/BiBiLogo';
 import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
-import { calculateAutoWidths, detectHighlightColor, detectCountColumns, toExcelCellValue, BUILD_ID } from './lib/utils';
-import { SheetData, HighlightedCells, CellNotes, FilterType } from './types';
+import { calculateAutoWidths, detectHighlightColor, detectCountColumns, toExcelCellValue, parseCountNumber, BUILD_ID } from './lib/utils';
+import { SheetData, SheetRow, HighlightedCells, CellNotes, FilterType } from './types';
 import * as ExcelJSImport from 'exceljs';
 
 // exceljs резолвится Vite через browser-поле в dist/exceljs.min.js (UMD).
@@ -100,6 +100,9 @@ const App: React.FC = () => {
     // Визуальные индексы графы пересчёта и номенклатуры (null — колонки нет).
     const [countColIndex, setCountColIndex] = useState<number | null>(null);
     const [nomenColIndex, setNomenColIndex] = useState<number | null>(null);
+    // «По учёту» и «Отклонение» — для автопересчёта отклонения.
+    const [uchetColIndex, setUchetColIndex] = useState<number | null>(null);
+    const [devColIndex, setDevColIndex] = useState<number | null>(null);
     // Цель клавиатуры в пересчёте: поиск или ячейка «По факту».
     const [keyboardTarget, setKeyboardTarget] = useState<'search' | 'cell'>('search');
     // Первая цифра заменяет значение ячейки, следующие дописывают.
@@ -172,6 +175,8 @@ const App: React.FC = () => {
                     setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
                     setCountColIndex(detected.countColIndex === -1 ? null : detected.countColIndex);
                     setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
+                    setUchetColIndex(detected.uchetColIndex === -1 ? null : detected.uchetColIndex);
+                    setDevColIndex(detected.devColIndex === -1 ? null : detected.devColIndex);
                     // Пересчёт НЕ включается сам: карандаш по умолчанию неактивен,
                     // вход — тапом по графе или зелёным карандашом.
                     setCountMode(false);
@@ -289,6 +294,8 @@ const App: React.FC = () => {
         colIndexMapRef.current = newHeaders.map((_, i) => i);
         setCountColIndex(detected.countColIndex === -1 ? null : detected.countColIndex);
         setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
+        setUchetColIndex(detected.uchetColIndex === -1 ? null : detected.uchetColIndex);
+        setDevColIndex(detected.devColIndex === -1 ? null : detected.devColIndex);
         // Пересчёт НЕ включается сам: карандаш по умолчанию неактивен,
         // вход — тапом по графе или зелёным карандашом.
         setCountMode(false);
@@ -592,10 +599,20 @@ const App: React.FC = () => {
     const updateCountCell = (row: number, next: string) => {
         if (countColIndex === null) return;
         const col = countColIndex;
+        const uchetCol = uchetColIndex;
+        const devCol = devColIndex;
         setSheetData(prev => prev.map((r, i) => {
             if (i !== row || !r) return r;
             const nextRow = [...r];
             nextRow[col] = next;
+            // Отклонение = факт − учёт: пересчитываем сразу же.
+            if (devCol !== null && uchetCol !== null) {
+                const factNum = parseCountNumber(next) ?? 0;
+                const uchetNum = parseCountNumber(r[uchetCol]);
+                if (uchetNum !== null) {
+                    nextRow[devCol] = factNum - uchetNum;
+                }
+            }
             return nextRow;
         }));
     };
@@ -661,6 +678,20 @@ const App: React.FC = () => {
         setNoteEditorState({ visible: false });
     };
 
+    // Строка для экспорта из облачной ветки (исходных байтов нет):
+    // графы факта/отклонения — числами, а не строками, иначе в Excel
+    // прижмутся влево, в отличие от остальных.
+    const toExportRow = (row: SheetRow): SheetRow => {
+        if (!row) return row;
+        const out = [...row];
+        [countColIndex, devColIndex].forEach(ci => {
+            if (ci !== null && ci >= 0 && ci < out.length) {
+                out[ci] = toExcelCellValue(out[ci] ?? null);
+            }
+        });
+        return out;
+    };
+
     const handleSaveFile = async () => {
         if (!fileName) return;
 
@@ -723,6 +754,16 @@ const App: React.FC = () => {
                     worksheet.getCell(dataRowExcel(r), dataColExcel(c)).note = notes[key];
                 });
 
+                // Формат (выравнивание, числовой формат) тянем с «По учёту»,
+                // чтобы вбитые значения выглядели как остальные ячейки.
+                const copyFormatFromUchet = (r: number, visualCol: number) => {
+                    if (uchetColIndex === null || uchetColIndex < 0) return;
+                    const ref = worksheet.getCell(dataRowExcel(r), dataColExcel(uchetColIndex));
+                    const cell = worksheet.getCell(dataRowExcel(r), dataColExcel(visualCol));
+                    if (ref.alignment) cell.alignment = { ...ref.alignment };
+                    if (ref.numFmt) cell.numFmt = ref.numFmt;
+                };
+
                 // Значения графы пересчёта, введённые в приложении
                 // (заливки и заметки значений не переносят).
                 if (countColIndex !== null && countColIndex >= 0) {
@@ -730,6 +771,17 @@ const App: React.FC = () => {
                         if (!row) return;
                         worksheet.getCell(dataRowExcel(r), dataColExcel(countColIndex)).value =
                             toExcelCellValue(row[countColIndex] ?? null);
+                        copyFormatFromUchet(r, countColIndex);
+                    });
+                }
+
+                // Посчитанные отклонения — значения и формат.
+                if (devColIndex !== null && devColIndex >= 0) {
+                    sheetData.forEach((row, r) => {
+                        if (!row) return;
+                        worksheet.getCell(dataRowExcel(r), dataColExcel(devColIndex)).value =
+                            toExcelCellValue(row[devColIndex] ?? null);
+                        copyFormatFromUchet(r, devColIndex);
                     });
                 }
             } else {
@@ -740,7 +792,7 @@ const App: React.FC = () => {
                 worksheet.addRow(headers.map(h => h ?? ''));
 
                 sheetData.forEach((row, rowIndex) => {
-                    const excelRow = worksheet.addRow(row.map(c => c ?? null));
+                    const excelRow = worksheet.addRow(toExportRow(row).map(c => c ?? null));
 
                     row.forEach((cell, colIndex) => {
                         const cellKey = `${rowIndex}-${colIndex}`;
@@ -790,11 +842,11 @@ const App: React.FC = () => {
                     }
 
                     if (subheaderIndex !== -1 && subheaderIndex !== lastAddedSubheaderIndex) {
-                        redWorksheet.addRow(sheetData[subheaderIndex].map(c => c ?? null));
+                        redWorksheet.addRow(toExportRow(sheetData[subheaderIndex]).map(c => c ?? null));
                         lastAddedSubheaderIndex = subheaderIndex;
                     }
 
-                    redWorksheet.addRow(sheetData[rowIndex].map(c => c ?? null));
+                    redWorksheet.addRow(toExportRow(sheetData[rowIndex]).map(c => c ?? null));
                 });
 
                 if (headers.length > 0) {
@@ -832,11 +884,11 @@ const App: React.FC = () => {
                     }
 
                     if (subheaderIndex !== -1 && subheaderIndex !== lastAddedSubheaderIndex) {
-                        noteWorksheet.addRow(sheetData[subheaderIndex].map(c => c ?? null));
+                        noteWorksheet.addRow(toExportRow(sheetData[subheaderIndex]).map(c => c ?? null));
                         lastAddedSubheaderIndex = subheaderIndex;
                     }
 
-                    const newRow = noteWorksheet.addRow(sheetData[rowIndex].map(c => c ?? null));
+                    const newRow = noteWorksheet.addRow(toExportRow(sheetData[rowIndex]).map(c => c ?? null));
 
                     // Add notes to the new row
                     newRow.eachCell((cell: any, colNumber: number) => {
@@ -996,6 +1048,8 @@ const App: React.FC = () => {
         setCountMode(false);
         setCountColIndex(null);
         setNomenColIndex(null);
+        setUchetColIndex(null);
+        setDevColIndex(null);
         setKeyboardTarget('search');
         setCountFresh(true);
         originalBufferRef.current = null;
