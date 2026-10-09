@@ -142,7 +142,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         { id: '7', content: '7', action: () => onKeyPress('7'), disabled: false },
         { id: '8', content: '8', action: () => onKeyPress('8'), disabled: false },
         { id: '9', content: '9', action: () => onKeyPress('9'), disabled: false },
-        { id: 'highlight', content: <HighlightIcon style={{ width: '1.5rem', height: '1.5rem', color: (highlightMode || countMode) ? 'black' : 'white' }} />, action: handleHighlightClick, className: countMode ? 'bg-success' : (highlightMode ? 'bg-warning' : 'bg-gray-700'), title: `Режим: подсветка → пересчёт (удерживайте — закрасить незакрашенные красным) [${BUILD_ID}]`, disabled: false, onPressStart: startHighlightPress, onPressEnd: cancelHighlightPress },
+        { id: 'highlight', content: <HighlightIcon style={{ width: '1.5rem', height: '1.5rem', color: highlightMode ? 'black' : 'white' }} />, action: handleHighlightClick, className: countMode ? 'bg-success' : (highlightMode ? 'bg-warning' : 'bg-gray-700'), title: `Режим: подсветка → пересчёт (удерживайте — закрасить незакрашенные красным) [${BUILD_ID}]`, disabled: false, onPressStart: startHighlightPress, onPressEnd: cancelHighlightPress },
     ];
 
     return (

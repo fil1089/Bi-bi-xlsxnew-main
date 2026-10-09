@@ -564,18 +564,23 @@ const App: React.FC = () => {
         });
     };
 
-    // Карандаш — цикл: выкл → подсветка (жёлтый) → пересчёт (зелёный) → выкл.
-    // Если графы «факт» в файле нет — только подсветка вкл/выкл, как раньше.
+    // Карандаш: с графой количества — только жёлтый ↔ зелёный
+    // (неактивного состояния нет); без графы — подсветка вкл/выкл, как раньше.
     const handlePencilTap = useCallback(() => {
-        if (highlightMode) {
-            setHighlightMode(false);
-            if (countColIndex !== null) {
+        if (countColIndex !== null) {
+            if (highlightMode) {
+                setHighlightMode(false);
                 setCountMode(true);
-                setSelectedCell(null);
-                setLastTappedCell(null);
-                setKeyboardTarget('search');
-                setCountFresh(true);
+            } else {
+                setCountMode(false);
+                setHighlightMode(true);
             }
+            setSelectedCell(null);
+            setLastTappedCell(null);
+            setKeyboardTarget('search');
+            setCountFresh(true);
+        } else if (highlightMode) {
+            setHighlightMode(false);
         } else if (countMode) {
             setCountMode(false);
             setSelectedCell(null);
