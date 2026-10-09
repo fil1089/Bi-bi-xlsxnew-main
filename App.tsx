@@ -719,6 +719,7 @@ const App: React.FC = () => {
                 if (borders) cell.border = thinBorder();
             };
             // Ширина колонок под содержимое (уже — не трогаем, только шире).
+            // Коэффициент с запасом: кириллица Arial шире единицы Excel.
             const fitColumnWidths = (ws: any, getExcelCol: (visual: number) => number, nCols: number) => {
                 for (let v = 0; v < nCols; v++) {
                     let maxLen = String(headers[v] ?? '').length;
@@ -726,7 +727,7 @@ const App: React.FC = () => {
                         const len = String(row?.[v] ?? '').length;
                         if (len > maxLen) maxLen = len;
                     });
-                    const fitted = Math.min(70, Math.max(10, maxLen * 1.25 + 2));
+                    const fitted = Math.min(80, Math.max(10, maxLen * 1.55 + 2));
                     const col = ws.getColumn(getExcelCol(v));
                     if (!col.width || col.width < fitted) col.width = fitted;
                 }
@@ -919,6 +920,7 @@ const App: React.FC = () => {
                             redWorksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
                         }
                     }
+                    fitColumnWidths(redWorksheet, (v) => v + 1, headers.length);
                 }
             }
 
@@ -971,6 +973,7 @@ const App: React.FC = () => {
                             noteWorksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
                         }
                     }
+                    fitColumnWidths(noteWorksheet, (v) => v + 1, headers.length);
                 }
             }
 
@@ -1001,15 +1004,19 @@ const App: React.FC = () => {
 
                         if (subheaderIndex !== -1 && subheaderIndex !== lastAddedSubheaderIndex) {
                             const subRow = devWorksheet.addRow(toExportRow(sheetData[subheaderIndex]).map(c => c ?? null));
-                            subRow.eachCell((cell: any) => normalizeCellLook(cell));
+                            // Явный цикл (не eachCell): пустые ячейки тоже получают вид.
+                            for (let ec = 1; ec <= headers.length; ec++) {
+                                normalizeCellLook(subRow.getCell(ec));
+                            }
                             lastAddedSubheaderIndex = subheaderIndex;
                         }
 
                         const dvRaw = sheetData[rowIndex][devColIndex];
                         const dvNum = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
                         const newRow = devWorksheet.addRow(toExportRow(sheetData[rowIndex]).map(c => c ?? null));
-                        newRow.eachCell((cell: any, colNumber: number) => {
-                            const colIndex = colNumber - 1;
+                        for (let ec = 1; ec <= headers.length; ec++) {
+                            const colIndex = ec - 1;
+                            const cell = newRow.getCell(ec);
                             normalizeCellLook(cell);
                             const key = `${rowIndex}-${colIndex}`;
                             if (highlightedCells[key]) {
@@ -1020,7 +1027,7 @@ const App: React.FC = () => {
                             if (notes[key]) {
                                 cell.note = notes[key];
                             }
-                        });
+                        }
                     });
 
                     fitColumnWidths(devWorksheet, (v) => v + 1, headers.length);
