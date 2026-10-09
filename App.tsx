@@ -12,7 +12,7 @@ import { BiBiLogo } from './components/BiBiLogo';
 import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
-import { calculateAutoWidths, detectHighlightColor, detectCountColumns, toExcelCellValue, parseCountNumber, BUILD_ID } from './lib/utils';
+import { calculateAutoWidths, detectCountColumns, toExcelCellValue, parseCountNumber, BUILD_ID } from './lib/utils';
 import { SheetData, SheetRow, HighlightedCells, CellNotes, FilterType } from './types';
 import * as ExcelJSImport from 'exceljs';
 
@@ -733,157 +733,57 @@ const App: React.FC = () => {
                 }
             };
 
-            if (originalBufferRef.current) {
-                // --- Экспорт ПОВЕРХ оригинала: сохраняем шрифты, границы,
-                // числовые форматы, формулы и ширины исходного файла. ---
-                await workbook.xlsx.load(originalBufferRef.current);
-                const worksheet = workbook.worksheets[0];
-                // Первая вкладка — всегда «Основной лист», а не имя из шаблона.
-                if (!workbook.worksheets.some((ws, i) => i > 0 && ws.name === 'Основной лист')) {
-                    worksheet.name = 'Основной лист';
-                }
+            // --- Основной лист ВСЕГДА рисуем с нуля (как «Отклонения»):
+            // предсказуемый вид, никакого мусора из шаблона. ---
+            // Карты выживших строк/колонок (после удалений в приложении);
+            // пустые (файл из облака) — значит, берём всё как есть.
+            const rowMaps = rowIndexMapRef.current.length > 0
+                ? rowIndexMapRef.current
+                : sheetData.map((_, i) => i);
+            const colMaps = colIndexMapRef.current.length > 0
+                ? colIndexMapRef.current
+                : headers.map((_, i) => i);
 
-                const headerRowNum = headerRowNumberRef.current; // 1-based строка заголовков
-                const colOff = colOffsetRef.current;             // ведущие пустые столбцы
-                // Индекс данных (0-based) → Excel-строка = idx + headerRowNum + 1.
-                // Индекс столбца (0-based) → Excel-столбец = idx + 1 + colOff.
-                const dataRowExcel = (idx: number) => idx + headerRowNum + 1;
-                // Визуальный индекс -> исходный через карту столбцов.
-                const dataColExcel = (visualIdx: number) =>
-                    (colIndexMapRef.current[visualIdx] ?? visualIdx) + 1 + colOff;
-
-                // 1. Вырезаем удалённые столбцы (от старших индексов к младшим).
-                const survivingCols = new Set(colIndexMapRef.current);
-                for (let oc = origColCountRef.current - 1; oc >= 0; oc--) {
-                    if (!survivingCols.has(oc)) worksheet.spliceColumns(dataColExcel(oc), 1);
-                }
-
-                // 2. Вырезаем удалённые строки данных.
-                const survivingRows = new Set(rowIndexMapRef.current);
-                for (let or = origRowCountRef.current - 1; or >= 0; or--) {
-                    if (!survivingRows.has(or)) worksheet.spliceRows(dataRowExcel(or), 1);
-                }
-
-                // 3. Снимаем устаревшие подсветки/заметки со строк данных,
-                // чтобы синхронизировать с текущим состоянием (учесть снятия).
-                // Плюс нормализуем вид шапки и строк данных (шрифт, рамки).
-                const lastDataRow = headerRowNum + rowIndexMapRef.current.length;
-                for (let er = headerRowNum; er <= lastDataRow; er++) {
-                    for (let v = 0; v < colIndexMapRef.current.length; v++) {
-                        normalizeCellLook(worksheet.getCell(er, dataColExcel(v)));
-                    }
-                }
-                // Зачистка шрифтов за пределами таблицы (рамки только в ней).
-                worksheet.eachRow((row: any) => {
-                    row.eachCell((cell: any) => normalizeCellLook(cell, false));
-                });
-                fitColumnWidths(worksheet, dataColExcel, colIndexMapRef.current.length);
-                worksheet.eachRow((row: any, rowNumber: number) => {
-                    if (rowNumber <= headerRowNum) return;
-                    row.eachCell((cell: any) => {
-                        if (detectHighlightColor(cell.fill)) {
-                            cell.fill = { type: 'pattern', pattern: 'none' };
-                        }
-                        if (cell.note) cell.note = undefined;
-                    });
-                });
-
-                // 4. Накладываем актуальные подсветки и заметки со смещением.
-                Object.keys(highlightedCells).forEach(key => {
-                    const [r, c] = key.split('-').map(Number);
-                    worksheet.getCell(dataRowExcel(r), dataColExcel(c)).fill = fillFor(highlightedCells[key]);
-                });
-                Object.keys(notes).forEach(key => {
-                    if (!notes[key]) return;
-                    const [r, c] = key.split('-').map(Number);
-                    worksheet.getCell(dataRowExcel(r), dataColExcel(c)).note = notes[key];
-                });
-
-                // Формат (выравнивание, числовой формат) тянем с «По учёту»,
-                // чтобы вбитые значения выглядели как остальные ячейки.
-                const copyFormatFromUchet = (r: number, visualCol: number) => {
-                    if (uchetColIndex === null || uchetColIndex < 0) return;
-                    const ref = worksheet.getCell(dataRowExcel(r), dataColExcel(uchetColIndex));
-                    const cell = worksheet.getCell(dataRowExcel(r), dataColExcel(visualCol));
-                    if (ref.alignment) cell.alignment = { ...ref.alignment };
-                    if (ref.numFmt) cell.numFmt = ref.numFmt;
-                };
-
-                // Значения графы пересчёта, введённые в приложении
-                // (заливки и заметки значений не переносят).
-                if (countColIndex !== null && countColIndex >= 0) {
-                    sheetData.forEach((row, r) => {
-                        if (!row) return;
-                        worksheet.getCell(dataRowExcel(r), dataColExcel(countColIndex)).value =
-                            toExcelCellValue(row[countColIndex] ?? null);
-                        copyFormatFromUchet(r, countColIndex);
-                    });
-                }
-
-                // Посчитанные отклонения — значения, формат и автозаливка
-                // (минус — красная, плюс — зелёная, ноль — без заливки;
-                // ручная подсветка ячейки важнее автозаливки).
-                if (devColIndex !== null && devColIndex >= 0) {
-                    sheetData.forEach((row, r) => {
-                        if (!row) return;
-                        const devCell = worksheet.getCell(dataRowExcel(r), dataColExcel(devColIndex));
-                        devCell.value = toExcelCellValue(row[devColIndex] ?? null);
-                        copyFormatFromUchet(r, devColIndex);
-                        const dvRaw = row[devColIndex];
-                        const dvNum = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
-                        if (dvNum !== null && dvNum !== 0 && !highlightedCells[`${r}-${devColIndex}`]) {
-                            devCell.fill = fillFor(dvNum < 0 ? 'red' : 'green');
-                        }
-                    });
-                }
-            } else {
-                // --- Фолбэк: исходных байтов нет (файл из облака) — собираем
-                // основной лист с нуля, как раньше. ---
-                const worksheet = workbook.addWorksheet("Основной лист");
-
-                worksheet.addRow(headers.map(h => h ?? ''));
-
-                sheetData.forEach((row, rowIndex) => {
-                    const excelRow = worksheet.addRow(toExportRow(row).map(c => c ?? null));
-
-                    let rowDv: number | null = null;
-                    if (devColIndex !== null && devColIndex >= 0 && row) {
-                        const dvRaw = row[devColIndex];
-                        rowDv = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
-                    }
-
-                    row.forEach((cell, colIndex) => {
-                        const cellKey = `${rowIndex}-${colIndex}`;
-                        const excelCell = excelRow.getCell(colIndex + 1);
-
-                        if (highlightedCells[cellKey]) {
-                            excelCell.fill = fillFor(highlightedCells[cellKey]);
-                        } else if (colIndex === devColIndex && rowDv !== null && rowDv !== 0) {
-                            excelCell.fill = fillFor(rowDv < 0 ? 'red' : 'green');
-                        }
-                        if (notes[cellKey]) {
-                            excelCell.note = notes[cellKey];
-                        }
-                    });
-                });
-
-                if (headers.length > 0) {
-                    for (let i = 1; i <= headers.length; i++) {
-                        if (i === 1) {
-                            worksheet.getColumn(1).width = 5;
-                        } else {
-                            worksheet.getColumn(i).width = Math.max(10, (columnWidths[i - 1] || 80) / 8);
-                        }
-                    }
-                    // Тот же читаемый вид, что и поверх оригинала.
-                    for (let er = 1; er <= sheetData.length + 1; er++) {
-                        for (let ec = 1; ec <= headers.length; ec++) {
-                            normalizeCellLook(worksheet.getCell(er, ec));
-                        }
-                    }
-                    fitColumnWidths(worksheet, (v) => v + 1, headers.length);
-                }
+            const worksheet = workbook.addWorksheet('Основной лист');
+            worksheet.addRow(colMaps.map(c => headers[c] ?? ''));
+            const headerRow = worksheet.getRow(1);
+            for (let ec = 1; ec <= colMaps.length; ec++) {
+                normalizeCellLook(headerRow.getCell(ec));
             }
+
+            rowMaps.forEach(r => {
+                const excelRow = worksheet.addRow(colMaps.map(c => toExportRow(sheetData[r] ?? [])[c] ?? null));
+
+                let rowDv: number | null = null;
+                if (devColIndex !== null && devColIndex >= 0) {
+                    const dvRaw = (sheetData[r] ?? [])[devColIndex];
+                    rowDv = typeof dvRaw === 'number' ? dvRaw : parseCountNumber(dvRaw ?? null);
+                }
+
+                colMaps.forEach((c, vi) => {
+                    const cell = excelRow.getCell(vi + 1);
+                    normalizeCellLook(cell);
+                    const key = `${r}-${c}`;
+                    if (highlightedCells[key]) {
+                        cell.fill = fillFor(highlightedCells[key]);
+                    } else if (c === devColIndex && rowDv !== null && rowDv !== 0) {
+                        cell.fill = fillFor(rowDv < 0 ? 'red' : 'green');
+                    }
+                    if (notes[key]) {
+                        cell.note = notes[key];
+                    }
+                });
+            });
+
+            // Ширина колонок под содержимое.
+            colMaps.forEach((c, vi) => {
+                let maxLen = String(headers[c] ?? '').length;
+                rowMaps.forEach(rr => {
+                    const len = String(sheetData[rr]?.[c] ?? '').length;
+                    if (len > maxLen) maxLen = len;
+                });
+                worksheet.getColumn(vi + 1).width = Math.min(80, Math.max(10, maxLen * 1.55 + 2));
+            });
 
             const redRowIndexes = new Set<number>();
             Object.keys(highlightedCells).forEach(key => {
