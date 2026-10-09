@@ -2,6 +2,7 @@
 import React, { useRef } from 'react';
 import { TrashIcon, HighlightIcon, ChevronDownIcon, DocumentTextIcon, BackspaceIcon, PlusIcon, SaveIcon } from './Icons';
 import { FilterType } from '../types';
+import { BUILD_ID } from '../lib/utils';
 
 // Fix: Export KeyboardButtonConfig type for use in KeyboardSettingsModal.
 export type KeyboardButtonConfig = {
@@ -68,8 +69,8 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         onFillEmptyRed,
     } = props;
 
-    // Долгое удержание карандаша (≥600мс) — перекрасить незакрашенные в красный.
-    // Короткий тап — обычное переключение режима выделения.
+    // Долгое удержание карандаша (≥850мс) — перекрасить незакрашенные в красный.
+    // Короткий тап — переключение режима (выкл → подсветка → пересчёт).
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressFiredRef = useRef(false);
 
@@ -78,7 +79,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         longPressTimerRef.current = setTimeout(() => {
             longPressFiredRef.current = true;
             onFillEmptyRed();
-        }, 600);
+        }, 850);
     };
 
     const cancelHighlightPress = () => {
@@ -141,7 +142,7 @@ const NumericKeyboard: React.FC<NumericKeyboardProps> = (props) => {
         { id: '7', content: '7', action: () => onKeyPress('7'), disabled: false },
         { id: '8', content: '8', action: () => onKeyPress('8'), disabled: false },
         { id: '9', content: '9', action: () => onKeyPress('9'), disabled: false },
-        { id: 'highlight', content: <HighlightIcon style={{ width: '1.5rem', height: '1.5rem', color: (highlightMode || countMode) ? 'black' : 'white' }} />, action: handleHighlightClick, className: countMode ? 'bg-success' : (highlightMode ? 'bg-warning' : 'bg-gray-700'), title: "Режим: подсветка → пересчёт (удерживайте — закрасить незакрашенные красным)", disabled: false, onPressStart: startHighlightPress, onPressEnd: cancelHighlightPress },
+        { id: 'highlight', content: <HighlightIcon style={{ width: '1.5rem', height: '1.5rem', color: (highlightMode || countMode) ? 'black' : 'white' }} />, action: handleHighlightClick, className: countMode ? 'bg-success' : (highlightMode ? 'bg-warning' : 'bg-gray-700'), title: `Режим: подсветка → пересчёт (удерживайте — закрасить незакрашенные красным) [${BUILD_ID}]`, disabled: false, onPressStart: startHighlightPress, onPressEnd: cancelHighlightPress },
     ];
 
     return (

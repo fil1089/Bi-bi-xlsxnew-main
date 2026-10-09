@@ -1,5 +1,9 @@
 import { SheetData, HighlightedCells, CellNotes } from "../types";
 
+// Маркер сборки: виден в титуле карандаша и дебаг-плашке (?debug=1),
+// чтобы за секунду понимать, какой код выполняется в браузере.
+export const BUILD_ID = '2026-10-09-count-v3';
+
 /**
  * Определяет положение строки заголовков и число ведущих пустых столбцов.
  * Нужно для файлов 1С, где заголовки не на первой строке (выше — название
@@ -182,80 +186,38 @@ export const readInitialHighlights = (worksheet: any, headerRowNumber: number = 
 };
 
 /**
- * Режим пересчёта: поиск колонки «По факту» и её перестановка
- * сразу после «Номенклатуры». Все функции чистые (без мутаций входа).
+ * Режим пересчёта: поиск графы количества («По факту» и похожие).
+ * Порядок колонок НЕ меняем — работаем с графой там, где она есть.
+ * Все функции чистые (без мутаций входа).
  */
-export const COUNT_COLUMN_HINT = 'факт';
+export const COUNT_COLUMN_HINTS = ['факт', 'кол-во', 'количество'];
 export const NOMENCLATURE_COLUMN_HINT = 'номенклатура';
 
-/** Индекс первой колонки, чьё название содержит hint (регистр не важен), −1 если нет. */
-export const findColumnIndex = (headers: string[], hint: string): number =>
-    headers.findIndex(h => String(h ?? '').toLowerCase().includes(hint));
+/** Нормализация заголовка для сравнения: trim, нижний регистр, схлопывание пробелов (включая nbsp). */
+export const normalizeHeader = (h: unknown): string =>
+    String(h ?? '').toLowerCase().replace(/[\s\u00a0]+/g, ' ').trim();
 
-export interface CountColumnLayout {
-    headers: string[];
-    data: SheetData;
-    notes: CellNotes;
-    highlightedCells: HighlightedCells;
-    columnWidths: number[];
-    /** Визуальный индекс -> исходный (кладётся в colIndexMapRef для экспорта). */
-    colPerm: number[];
+/** Индекс первой колонки, чьё название содержит hint (регистр/пробелы не важны), −1 если нет. */
+export const findColumnIndex = (headers: string[], hint: string): number => {
+    const normHint = normalizeHeader(hint);
+    return headers.findIndex(h => normalizeHeader(h).includes(normHint));
+};
+
+export interface CountColumns {
     /** Визуальный индекс графы пересчёта, −1 если колонки нет. */
     countColIndex: number;
     /** Визуальный индекс номенклатуры, −1 если колонки нет. */
     nomenColIndex: number;
 }
 
-const remapColumnKeys = <T,>(obj: { [key: string]: T }, newVisualOfOriginal: number[]): { [key: string]: T } => {
-    const remapped: { [key: string]: T } = {};
-    Object.keys(obj).forEach(key => {
-        const [r, c] = key.split('-').map(Number);
-        remapped[`${r}-${newVisualOfOriginal[c] ?? c}`] = obj[key];
-    });
-    return remapped;
-};
-
-/**
- * Если в заголовках есть колонка «факт» и она стоит не сразу после
- * номенклатуры — перемещает её туда (заголовки, строки, ширины, ключи
- * заметок/подсветок). Идемпотентна: повторный вызов ничего не меняет.
- */
-export const layoutCountColumn = (
-    headers: string[],
-    data: SheetData,
-    notes: CellNotes,
-    highlightedCells: HighlightedCells,
-    columnWidths: number[],
-): CountColumnLayout => {
-    const identity = headers.map((_, i) => i);
-    const foundCount = findColumnIndex(headers, COUNT_COLUMN_HINT);
-    const foundNomen = findColumnIndex(headers, NOMENCLATURE_COLUMN_HINT);
-    const asIs = (): CountColumnLayout => ({
-        headers, data, notes, highlightedCells, columnWidths,
-        colPerm: identity, countColIndex: foundCount, nomenColIndex: foundNomen,
-    });
-
-    if (foundCount === -1 || foundNomen === -1 || foundCount === foundNomen) return asIs();
-    const target = foundNomen + 1;
-    if (foundCount === target) return asIs();
-
-    // Новый визуальный порядок: order[newVisual] = original.
-    const order = [...identity];
-    const [moved] = order.splice(foundCount, 1);
-    const insertAt = foundCount < target ? target - 1 : target;
-    order.splice(insertAt, 0, moved);
-    const newVisualOfOriginal = identity.map(orig => order.indexOf(orig));
-
-    return {
-        headers: order.map(oi => headers[oi]),
-        data: data.map(row => (row ? order.map(oi => row[oi] ?? null) : row)),
-        notes: remapColumnKeys(notes, newVisualOfOriginal),
-        highlightedCells: remapColumnKeys(highlightedCells, newVisualOfOriginal),
-        columnWidths: columnWidths.length > 0 ? order.map(oi => columnWidths[oi]) : [],
-        colPerm: order,
-        countColIndex: order.indexOf(foundCount),
-        nomenColIndex: order.indexOf(foundNomen),
-    };
+/** Первая подходящая подсказка из COUNT_COLUMN_HINTS, иначе −1. */
+export const detectCountColumns = (headers: string[]): CountColumns => {
+    let countColIndex = -1;
+    for (const hint of COUNT_COLUMN_HINTS) {
+        countColIndex = findColumnIndex(headers, hint);
+        if (countColIndex !== -1) break;
+    }
+    return { countColIndex, nomenColIndex: findColumnIndex(headers, NOMENCLATURE_COLUMN_HINT) };
 };
 
 /**

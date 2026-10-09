@@ -12,7 +12,7 @@ import { BiBiLogo } from './components/BiBiLogo';
 import { api, isAuthEnabled } from './lib/api';
 import { useAuth } from './hooks/useAuth';
 import { useAutoSave } from './hooks/useAutoSave';
-import { calculateAutoWidths, detectHighlightColor, layoutCountColumn, toExcelCellValue } from './lib/utils';
+import { calculateAutoWidths, detectHighlightColor, detectCountColumns, toExcelCellValue, BUILD_ID } from './lib/utils';
 import { SheetData, HighlightedCells, CellNotes, FilterType } from './types';
 import * as ExcelJSImport from 'exceljs';
 
@@ -28,6 +28,14 @@ type NoteEditorState = {
 
 
 const REVISION_GROUP_PREFIX = 'Ревизионная группа';
+
+const isDebugOverlay = (): boolean => {
+    try {
+        return new URLSearchParams(window.location.search).get('debug') === '1';
+    } catch {
+        return false;
+    }
+};
 
 const App: React.FC = () => {
     // Auth state
@@ -154,21 +162,18 @@ const App: React.FC = () => {
                 // Automatically load the first one if we don't have a filename yet
                 if (data.length > 0 && !fileName) {
                     const lastFile = data[0];
-                    // Графа «По факту» — сразу после номенклатуры (если есть).
-                    const layout = layoutCountColumn(
-                        lastFile.headers, lastFile.sheet_data,
-                        lastFile.notes || {}, lastFile.highlighted_cells || {}, [],
-                    );
-                    setHeaders(layout.headers);
-                    setSheetData(layout.data);
+                    // Детект графы пересчёта (порядок колонок не меняем).
+                    const detected = detectCountColumns(lastFile.headers || []);
+                    setHeaders(lastFile.headers);
+                    setSheetData(lastFile.sheet_data);
                     setFileName(lastFile.file_name);
-                    setHighlightedCells(layout.highlightedCells);
-                    setNotes(layout.notes);
-                    setColumnWidths(calculateAutoWidths(layout.headers, layout.data));
-                    setCountColIndex(layout.countColIndex === -1 ? null : layout.countColIndex);
-                    setNomenColIndex(layout.nomenColIndex === -1 ? null : layout.nomenColIndex);
-                    // Пересчёт включается сам, если в файле есть графа «факт».
-                    setCountMode(layout.countColIndex !== -1);
+                    setHighlightedCells(lastFile.highlighted_cells || {});
+                    setNotes(lastFile.notes || {});
+                    setColumnWidths(calculateAutoWidths(lastFile.headers, lastFile.sheet_data));
+                    setCountColIndex(detected.countColIndex === -1 ? null : detected.countColIndex);
+                    setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
+                    // Пересчёт включается сам, если в файле есть графа количества.
+                    setCountMode(detected.countColIndex !== -1);
                     // Облачный файл — исходных байтов нет, экспорт пойдёт по фолбэку.
                     originalBufferRef.current = null;
                     rowIndexMapRef.current = [];
@@ -259,38 +264,32 @@ const App: React.FC = () => {
         const newHeaders = pendingFile.headers || [];
         const newData = pendingFile.data || [];
 
-        // Графа «По факту» — сразу после номенклатуры (если есть).
-        const layout = layoutCountColumn(
-            newHeaders, newData,
-            pendingFile.notes || {}, pendingFile.highlightedCells || {},
-            pendingFile.columnWidths || [],
-        );
+        // Детект графы пересчёта (порядок колонок не меняем).
+        const detected = detectCountColumns(newHeaders);
 
-        setHeaders(layout.headers);
-        setSheetData(layout.data);
+        setHeaders(newHeaders);
+        setSheetData(newData);
         setFileName(pendingFile.fileName);
 
-        setNotes(layout.notes);
-        setHighlightedCells(layout.highlightedCells);
+        setNotes(pendingFile.notes || {});
+        setHighlightedCells(pendingFile.highlightedCells || {});
 
         if (pendingFile.columnWidths && pendingFile.columnWidths.length > 0) {
-            setColumnWidths(layout.columnWidths);
+            setColumnWidths(pendingFile.columnWidths);
         } else {
-            setColumnWidths(calculateAutoWidths(layout.headers, layout.data));
+            setColumnWidths(calculateAutoWidths(newHeaders, newData));
         }
 
-        // Сохраняем исходные байты и инициализируем карты индексов.
-        // Карта столбцов — перестановка layout (визуальный -> исходный),
-        // чтобы экспорт поверх оригинала попадал в те же колонки Excel.
+        // Сохраняем исходные байты и инициализируем карты индексов «как есть».
         originalBufferRef.current = pendingFile.buffer ?? null;
-        origRowCountRef.current = layout.data.length;
-        origColCountRef.current = layout.headers.length;
-        rowIndexMapRef.current = layout.data.map((_, i) => i);
-        colIndexMapRef.current = layout.colPerm;
-        setCountColIndex(layout.countColIndex === -1 ? null : layout.countColIndex);
-        setNomenColIndex(layout.nomenColIndex === -1 ? null : layout.nomenColIndex);
-        // Пересчёт включается сам, если в файле есть графа «факт».
-        setCountMode(layout.countColIndex !== -1);
+        origRowCountRef.current = newData.length;
+        origColCountRef.current = newHeaders.length;
+        rowIndexMapRef.current = newData.map((_, i) => i);
+        colIndexMapRef.current = newHeaders.map((_, i) => i);
+        setCountColIndex(detected.countColIndex === -1 ? null : detected.countColIndex);
+        setNomenColIndex(detected.nomenColIndex === -1 ? null : detected.nomenColIndex);
+        // Пересчёт включается сам, если в файле есть графа количества.
+        setCountMode(detected.countColIndex !== -1);
         setKeyboardTarget('search');
         setCountFresh(true);
         headerRowNumberRef.current = pendingFile.headerRowNumber ?? 1;
@@ -572,11 +571,13 @@ const App: React.FC = () => {
         }
     }, [highlightMode, countMode, countColIndex]);
 
-    // Тап в пересчёте: рамка — на номенклатуру строки, ввод — в «По факту».
+    // Тап в пересчёте: рамка — на номенклатуру строки (или первую колонку,
+    // если номенклатура не найдена), ввод — в графу количества.
     const handleCountSelect = useCallback((rowIndex: number) => {
-        if (countColIndex === null || nomenColIndex === null) return;
-        setSelectedCell({ row: rowIndex, col: nomenColIndex });
-        setLastTappedCell({ row: rowIndex, col: nomenColIndex });
+        if (countColIndex === null) return;
+        const ringCol = nomenColIndex ?? 0;
+        setSelectedCell({ row: rowIndex, col: ringCol });
+        setLastTappedCell({ row: rowIndex, col: ringCol });
         setKeyboardTarget('cell');
         setCountFresh(true);
         setKeyboardVisible(true);
@@ -677,8 +678,7 @@ const App: React.FC = () => {
                 // Индекс данных (0-based) → Excel-строка = idx + headerRowNum + 1.
                 // Индекс столбца (0-based) → Excel-столбец = idx + 1 + colOff.
                 const dataRowExcel = (idx: number) => idx + headerRowNum + 1;
-                // Визуальный индекс -> исходный через карту (учитывает
-                // перестановку «По факту» после номенклатуры при загрузке).
+                // Визуальный индекс -> исходный через карту столбцов.
                 const dataColExcel = (visualIdx: number) =>
                     (colIndexMapRef.current[visualIdx] ?? visualIdx) + 1 + colOff;
 
@@ -1036,6 +1036,14 @@ const App: React.FC = () => {
         }
     };
 
+    // Временный дебаг: что видит детект графы для загруженного файла.
+    useEffect(() => {
+        if (!fileName) return;
+        console.info('[bi-bi]', BUILD_ID, {
+            headers, countColIndex, nomenColIndex, countMode, highlightMode,
+        });
+    }, [fileName]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const renderContent = () => {
         if (loading) {
             return <div className="d-flex align-items-center justify-content-center h-100"><p className="fs-5 text-gray-300">Обработка файла...</p></div>;
@@ -1136,6 +1144,16 @@ const App: React.FC = () => {
             )}
 
             {renderContent()}
+            {isDebugOverlay() && (
+                <div className="position-fixed top-0 start-0 z-1050 bg-black bg-opacity-75 border border-warning rounded m-2 p-2 small font-monospace text-warning overflow-auto" style={{ maxWidth: '92vw', maxHeight: '38vh', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                    build: {BUILD_ID}{'\n'}
+                    file: {fileName ?? '—'}{'\n'}
+                    headers: {JSON.stringify(headers)}{'\n'}
+                    countCol: {String(countColIndex)} nomenCol: {String(nomenColIndex)}{'\n'}
+                    countMode: {String(countMode)} highlight: {String(highlightMode)} target: {keyboardTarget}{'\n'}
+                    selected: {JSON.stringify(selectedCell)}
+                </div>
+            )}
             {appMode === 'search' && noteEditorState.visible && (
                 <NoteEditor
                     note={notes[`${noteEditorState.rowIndex}-${noteEditorState.colIndex}`] || ''}

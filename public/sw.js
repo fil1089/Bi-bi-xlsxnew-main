@@ -5,7 +5,7 @@
  *  - статика same-origin GET → cache-first с фоновым обновлением
  */
 
-const CACHE_NAME = 'xlsx-lite-v1';
+const CACHE_NAME = 'xlsx-lite-v2';
 const CORE_ASSETS = [
   '/',
   '/index.html',
